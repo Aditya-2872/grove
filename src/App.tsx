@@ -11,6 +11,7 @@ import {
   createWidget,
   specToWidget,
   reflow,
+  placeNewWidget,
   suggestedTypes,
 } from "./generateWorkspace";
 import { getAI, getMock } from "./ai";
@@ -367,12 +368,13 @@ export default function App({
   const moveWidget = (id: string, x: number, y: number) =>
     setActiveWidgets((ws) => ws.map((w) => (w.id === id ? { ...w, x, y } : w)));
   const deleteWidget = (id: string) =>
-    setActiveWidgets((ws) => reflow(ws.filter((w) => w.id !== id)));
+    // Leave the gap — re-packing the survivors is what clobbered the layout.
+    setActiveWidgets((ws) => ws.filter((w) => w.id !== id));
   const resizeWidget = (id: string, width: number, height: number) =>
     setActiveWidgets((ws) => ws.map((w) => (w.id === id ? { ...w, width, height } : w)));
 
   function addWidget(type: WidgetType) {
-    setActiveWidgets((ws) => reflow([...ws, createWidget(type, 0, 0)]));
+    setActiveWidgets((ws) => [...ws, placeNewWidget(ws, createWidget(type, 0, 0))]);
   }
   async function addCustomWidget(description: string) {
     const ctx = {
@@ -382,13 +384,13 @@ export default function App({
     };
     try {
       const spec = await getAI().generateCustomWidget(description, ctx);
-      setActiveWidgets((ws) => reflow([...ws, specToWidget(spec, 0, 0)]));
+      setActiveWidgets((ws) => [...ws, placeNewWidget(ws, specToWidget(spec, 0, 0))]);
     } catch (e) {
       // Real AI failed — say why in the console, then fall back to the SMART
       // mock (which builds a fitting metric), never a bare note.
       console.error("AI widget generation failed; using offline fallback:", e);
       const spec = await getMock().generateCustomWidget(description, ctx);
-      setActiveWidgets((ws) => reflow([...ws, specToWidget(spec, 0, 0)]));
+      setActiveWidgets((ws) => [...ws, placeNewWidget(ws, specToWidget(spec, 0, 0))]);
     }
   }
 
@@ -467,7 +469,9 @@ export default function App({
                 }),
               },
         );
-        const widgets = picked ? reflow([...w.widgets, specToWidget(picked, 0, 0)]) : w.widgets;
+        const widgets = picked
+          ? [...w.widgets, placeNewWidget(w.widgets, specToWidget(picked, 0, 0))]
+          : w.widgets;
         return { ...w, widgets, chat: { ...w.chat, messages } };
       }),
     }));

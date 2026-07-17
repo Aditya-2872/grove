@@ -309,9 +309,45 @@ export function specToWidget(spec: WidgetSpec, x: number, y: number): Widget {
 }
 
 /**
+ * Find a free spot for ONE new widget WITHOUT moving any existing one — scans
+ * top-to-bottom, left-to-right for the first slot that doesn't overlap.
+ *
+ * This is what an add should use. reflow() re-packs the WHOLE canvas, which is
+ * only right for the initial build; running it on every add/delete threw away
+ * the layout the user hand-arranged (the snapping, the resizing) —
+ * indistinguishable from a bug from their chair.
+ */
+export function placeNewWidget(existing: Widget[], widget: Widget): Widget {
+  const START_X = 40;
+  const START_Y = 36;
+  const MAX_ROW = 980;
+  const GAP = 20;
+  const STEP = 20;
+  const { w, h } = sizeOf(widget);
+  const rects = existing.map((e) => {
+    const s = sizeOf(e);
+    return { x: e.x, y: e.y, w: s.w, h: s.h };
+  });
+  const free = (x: number, y: number) =>
+    rects.every(
+      (r) => x + w + GAP <= r.x || r.x + r.w + GAP <= x || y + h + GAP <= r.y || r.y + r.h + GAP <= y,
+    );
+  for (let y = START_Y; y < START_Y + 6000; y += STEP) {
+    for (let x = START_X; x <= START_X + MAX_ROW; x += STEP) {
+      if (free(x, y)) return { ...widget, x, y };
+    }
+  }
+  // Nothing free in the grid — drop it below everything.
+  const bottom = rects.reduce((m, r) => Math.max(m, r.y + r.h), START_Y);
+  return { ...widget, x: START_X, y: bottom + GAP };
+}
+
+/**
  * Re-pack every widget into a tidy, gap-free shelf layout (left-to-right,
  * wrapping to new rows), preserving order and respecting each widget's size.
- * Called after add/delete so the canvas never overlaps or leaves holes.
+ * Only for the INITIAL build, where every widget arrives at (0,0) with no
+ * placement to preserve — NOT for add/delete (use placeNewWidget / leave the
+ * gap), which would clobber the user's arrangement.
  */
 export function reflow(widgets: Widget[]): Widget[] {
   const START_X = 40;
