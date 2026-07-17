@@ -23,9 +23,12 @@ const json = (body: unknown, status: number): Response =>
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
+  // GEMINI_API_KEY is the only real secret here. The Supabase URL/anon key are
+  // public (they already ship in the browser bundle), so we just reuse the VITE_
+  // ones rather than making the deployer enter them twice.
   const key = process.env.GEMINI_API_KEY;
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseAnon = process.env.SUPABASE_ANON_KEY;
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const supabaseAnon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
   if (!key || !supabaseUrl || !supabaseAnon) {
     return json({ error: "AI isn't configured on the server yet." }, 503);
   }
