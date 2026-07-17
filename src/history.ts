@@ -31,7 +31,8 @@ export function effectiveValue(
   log: LogEntry[] | undefined,
   period: MetricPeriod | undefined,
 ): number {
-  if (!period) return value;
+  // "total" and absent both accumulate — nothing rolls over.
+  if (!period || period === "total") return value;
   const last = (log ?? []).reduce<string | null>((acc, e) => (acc && acc >= e.d ? acc : e.d), null);
   if (!last) return value; // never logged — nothing has rolled over yet
   return periodKey(last, period) === periodKey(isoDay(), period) ? value : 0;

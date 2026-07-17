@@ -14,7 +14,7 @@ import {
   suggestedTypes,
 } from "./generateWorkspace";
 import { getAI, getMock } from "./ai";
-import { loadState, saveState, type AppState } from "./storage";
+import { loadState, saveState, migrateMetricPeriods, type AppState } from "./storage";
 import { cloudEnabled } from "./supabase";
 import { useAuth } from "./auth";
 import {
@@ -217,7 +217,9 @@ export default function App({
         }
         return w;
       });
-      const added = cloud.filter((r) => !localIds.has(r.data.id));
+      const added = cloud
+        .filter((r) => !localIds.has(r.data.id))
+        .map((r) => ({ ...r, data: migrateMetricPeriods(r.data) }));
       added.forEach((r) => {
         nextBase.set(r.data.id, { json: JSON.stringify(r.data), updatedAt: r.updatedAt });
         changed = true;
@@ -237,7 +239,14 @@ export default function App({
     setLoadError(false);
     (async () => {
       try {
-        const cloud = await fetchWorkspaces(profileId);
+        // Migrate in memory on the way in. lastSynced base and state are both
+        // built from the migrated rows below, so a legacy metric with a
+        // period-named title displays correctly every load without a write
+        // burst; it only persists to the cloud once the user touches it.
+        const cloud = (await fetchWorkspaces(profileId)).map((r) => ({
+          ...r,
+          data: migrateMetricPeriods(r.data),
+        }));
         if (cancelled) return;
         const legacy = loadState();
         // Migrate pre-cloud localStorage tabs ONLY when the whole ACCOUNT is

@@ -287,10 +287,12 @@ export function specToWidget(spec: WidgetSpec, x: number, y: number): Widget {
         unit: spec.unit ? clampStr(spec.unit, 12) : undefined,
         target: optNum(spec.target),
         direction: spec.direction === "down" ? "down" : "up",
-        // Anything the AI sends that isn't one of these three is dropped to
+        // Anything the AI sends that isn't a known period is dropped to
         // undefined = accumulates forever, which is the safe reading.
         period:
-          spec.period === "day" || spec.period === "week" || spec.period === "month" ? spec.period : undefined,
+          spec.period === "day" || spec.period === "week" || spec.period === "month" || spec.period === "total"
+            ? spec.period
+            : undefined,
       };
     case "habit":
       return {

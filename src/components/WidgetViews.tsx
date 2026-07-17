@@ -35,19 +35,23 @@ function niceStep(target?: number): number {
   return (n < 1.5 ? 1 : n < 3.5 ? 2 : n < 7.5 ? 5 : 10) * mag;
 }
 
-// Cycled by the period chip. Keyed by String(period) so undefined ("total",
-// the accumulate-forever default) is a real entry rather than a special case.
+// Cycled by the period chip. Keyed by String(period) so `undefined` (a legacy
+// metric that predates the field) is a real entry. Cycling never lands back on
+// undefined — it writes an explicit "total" — so the migration can't re-stamp a
+// value the user set by hand.
 const PERIOD_LABEL: Record<string, string> = {
   undefined: "total",
+  total: "total",
   day: "daily",
   week: "weekly",
   month: "monthly",
 };
-const NEXT_PERIOD: Record<string, MetricPeriod | undefined> = {
+const NEXT_PERIOD: Record<string, MetricPeriod> = {
   undefined: "day",
+  total: "day",
   day: "week",
   week: "month",
-  month: undefined,
+  month: "total",
 };
 
 // An editable number that only commits on blur/Enter — so typing "5000" logs
