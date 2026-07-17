@@ -1,0 +1,29 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- Grove home-screen mark: the app's sprout on a calm dark tile. Full-bleed
+       square so it works as an iOS apple-touch-icon (iOS rounds it), an Android
+       maskable icon (the OS shapes it), and a plain "any" icon. Solid stroke,
+       not a gradient: an objectBoundingBox gradient degenerates to nothing on
+       the zero-width vertical stem, which silently dropped it. -->
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="42%" r="60%">
+      <stop offset="0%" stop-color="#9db38c" stop-opacity="0.20" />
+      <stop offset="60%" stop-color="#9db38c" stop-opacity="0.04" />
+      <stop offset="100%" stop-color="#9db38c" stop-opacity="0" />
+    </radialGradient>
+    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="0" stdDeviation="7" flood-color="#9db38c" flood-opacity="0.45" />
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" fill="#0a0d0b" />
+  <rect width="512" height="512" fill="url(#glow)" />
+
+  <!-- the sprout (icons.tsx Logo), centered and scaled into the safe zone -->
+  <g transform="translate(-15 -52) scale(22)"
+     fill="none" stroke="#aecb9f" stroke-width="1.15"
+     stroke-linecap="round" stroke-linejoin="round" filter="url(#soft)">
+    <path d="M12 20v-7" />
+    <path d="M12 13c0-3 2.4-5 5.2-5-.2 3-2.4 5-5.2 5Z" />
+    <path d="M12 14c0-2.6-2-4.4-4.6-4.4C7.6 12 9.6 14 12 14Z" />
+  </g>
+</svg>
