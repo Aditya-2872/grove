@@ -40,7 +40,10 @@ export async function insertWorkspaces(
   if (!supabase || workspaces.length === 0) return {};
   const now = new Date().toISOString();
   const rows = workspaces.map((w) => ({ id: w.id, profile_id: profileId, data: w, updated_at: now }));
-  const { data, error } = await supabase.from(TABLE).insert(rows).select("id, updated_at");
+  // upsert, not insert: if a previous sync inserted the row but died before it
+  // could record the new base, a plain insert would throw 23505 forever and
+  // wedge sync for the session. Writing the same row twice is harmless.
+  const { data, error } = await supabase.from(TABLE).upsert(rows).select("id, updated_at");
   if (error) throw new Error(`cloud insert failed: ${error.message}`);
   return Object.fromEntries((data ?? []).map((r) => [r.id as string, r.updated_at as string]));
 }

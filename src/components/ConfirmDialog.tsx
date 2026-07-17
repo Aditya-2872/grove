@@ -36,9 +36,14 @@ export default function ConfirmDialog({
   };
 
   useEffect(() => {
+    // Escape only. A document-level Enter handler ALWAYS beat the focused
+    // button: Enter activates a button via its default action, which runs after
+    // keydown finishes dispatching — so Enter on "Cancel" ran onConfirm and
+    // deleted the goal, and the `fired` guard below is what swallowed Cancel's
+    // own click. The confirm button is autoFocused, so Enter still confirms
+    // natively and nothing is lost.
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") close(onCancel);
-      if (e.key === "Enter") close(onConfirm);
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);

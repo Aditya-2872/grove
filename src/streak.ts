@@ -13,6 +13,17 @@ export function isoDay(d: Date = new Date()): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/** Parse "YYYY-MM-DD" back into a date at LOCAL midnight.
+ *  `new Date("2026-07-17")` parses a date-only string as UTC midnight, which
+ *  then reads back as the PREVIOUS day through isoDay()'s local getters for
+ *  anyone west of UTC — their streak silently lost a day, or showed 0 while the
+ *  button said "Done today ✓". Invisible from IST, which is why it shipped.
+ *  Also DST-safe: the y/m/d constructor lands on local midnight either way. */
+function fromIso(iso: string): Date {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
 /** `offset` days from today (negative = past). */
 export function dayOffset(offset: number): string {
   const d = new Date();
@@ -38,7 +49,7 @@ export function computeStreak(checkins: string[]): StreakInfo {
   let current = 0;
   let cursor = doneToday ? today : set.has(yesterday) ? yesterday : null;
   if (cursor) {
-    const d = new Date(cursor);
+    const d = fromIso(cursor);
     while (set.has(isoDay(d))) {
       current += 1;
       d.setDate(d.getDate() - 1);
@@ -51,7 +62,7 @@ export function computeStreak(checkins: string[]): StreakInfo {
   let run = 0;
   let prev: Date | null = null;
   for (const iso of sorted) {
-    const d = new Date(iso);
+    const d = fromIso(iso);
     if (prev) {
       const gap = Math.round((d.getTime() - prev.getTime()) / 86_400_000);
       run = gap === 1 ? run + 1 : 1;

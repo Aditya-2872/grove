@@ -84,9 +84,12 @@ export default function App({
   // Latest state, read by flushes (a closure would capture stale state).
   const stateRef = useRef(state);
   stateRef.current = state;
-  // Monotonic token so a late-resolving sync can't overwrite the base snapshot
-  // that a later sync already advanced.
-  const syncSeq = useRef(0);
+  // Sync runs one at a time; anything that arrives mid-flight re-runs after.
+  // (This replaced a monotonic token that was meant to stop a late sync
+  // clobbering a newer base — but it discarded the base of writes that had
+  // already SUCCEEDED, which is what made the next run conflict with itself.)
+  const syncing = useRef(false);
+  const pendingSync = useRef(false);
 
   // The next theme = one past the highest theme currently in use, so every tab
   // gets its own accent (cycling through the palette once they exceed its size).
@@ -97,53 +100,90 @@ export default function App({
 
   // Push local changes with optimistic concurrency; on conflict, adopt the
   // cloud version rather than clobber it. `seq` guards against out-of-order syncs.
-  async function syncNow(pid: string, seq: number): Promise<void> {
-    const base = lastSynced.current;
-    const { current, changed, removed } = computeDiff(stateRef.current.workspaces, base);
-    if (changed.length === 0 && removed.length === 0) {
-      setSaveStatus("idle");
+  /** Record one row's synced state immediately, rather than batching every base
+   *  update to the end of the run. A failure half-way through must never discard
+   *  writes that already landed — that's what made a stray error wedge sync into
+   *  retrying the same insert forever. */
+  function commitBase(id: string, json: string, updatedAt: string) {
+    const next = new Map(lastSynced.current);
+    next.set(id, { json, updatedAt });
+    lastSynced.current = next;
+  }
+  function dropBase(id: string) {
+    const next = new Map(lastSynced.current);
+    next.delete(id);
+    lastSynced.current = next;
+  }
+
+  // Strictly one sync at a time. Two overlapping runs both read `lastSynced` at
+  // entry, so the second CASes against a base the first already superseded: it
+  // matches 0 rows, is misread as "another device wrote this", and adopts the
+  // cloud copy over what the user typed in between. Any change that arrives
+  // mid-flight sets `pendingSync` and re-runs once at the end instead.
+  async function syncNow(pid: string): Promise<void> {
+    if (syncing.current) {
+      pendingSync.current = true;
       return;
     }
+    syncing.current = true;
     try {
-      const nextBase = new Map(base);
+      const base = lastSynced.current;
+      const { current, changed, removed } = computeDiff(stateRef.current.workspaces, base);
+      if (changed.length === 0 && removed.length === 0) {
+        setSaveStatus("idle");
+        return;
+      }
       const fresh = changed.filter((w) => !base.has(w.id));
       const existing = changed.filter((w) => base.has(w.id));
 
       if (fresh.length) {
         const map = await insertWorkspaces(fresh, pid);
-        fresh.forEach((w) => nextBase.set(w.id, { json: current.get(w.id)!, updatedAt: map[w.id] }));
+        fresh.forEach((w) => commitBase(w.id, current.get(w.id)!, map[w.id]));
       }
       const conflicts: string[] = [];
       for (const w of existing) {
         const nu = await updateWorkspaceCAS(w, pid, base.get(w.id)!.updatedAt);
-        if (nu) nextBase.set(w.id, { json: current.get(w.id)!, updatedAt: nu });
+        if (nu) commitBase(w.id, current.get(w.id)!, nu);
         else conflicts.push(w.id);
       }
       if (removed.length) {
         await deleteWorkspaces(removed, pid);
-        removed.forEach((id) => nextBase.delete(id));
+        removed.forEach(dropBase);
       }
       if (conflicts.length) {
-        // another tab/device wrote these — take the cloud version, never overwrite
+        // A CAS matching 0 rows means one of two things, and they need opposite
+        // handling: the row moved on (another device wrote it — adopt theirs,
+        // never clobber), or the row is GONE (deleted elsewhere). Treating the
+        // second case as the first left the workspace diverged forever, and a
+        // later blind flush would resurrect a goal the user had deleted.
         const cloud = await fetchWorkspaces(pid);
         const byId = new Map(cloud.map((r) => [r.data.id, r]));
         conflicts.forEach((id) => {
           const c = byId.get(id);
-          if (c) nextBase.set(id, { json: JSON.stringify(c.data), updatedAt: c.updatedAt });
+          if (c) commitBase(id, JSON.stringify(c.data), c.updatedAt);
+          else dropBase(id);
         });
         setState((s) => ({
           ...s,
-          workspaces: s.workspaces.map((w) => {
+          workspaces: s.workspaces.flatMap((w) => {
+            if (!conflicts.includes(w.id)) return [w];
             const c = byId.get(w.id);
-            return conflicts.includes(w.id) && c ? c.data : w;
+            return c ? [c.data] : [];
           }),
         }));
       }
-      if (seq === syncSeq.current) lastSynced.current = nextBase;
-      setSaveStatus("saved");
+      // Don't claim "saved" for a run that overwrote the user's copy with
+      // someone else's.
+      setSaveStatus(conflicts.length ? "idle" : "saved");
     } catch (e) {
       console.error("cloud sync failed (will retry on next change):", e);
       setSaveStatus("offline");
+    } finally {
+      syncing.current = false;
+      if (pendingSync.current) {
+        pendingSync.current = false;
+        void syncNow(pid);
+      }
     }
   }
 
@@ -259,9 +299,8 @@ export default function App({
     const { changed, removed } = computeDiff(state.workspaces, lastSynced.current);
     if (changed.length === 0 && removed.length === 0) return;
     const t = window.setTimeout(() => {
-      const seq = ++syncSeq.current;
       setSaveStatus("saving");
-      void syncNow(profileId, seq);
+      void syncNow(profileId);
     }, 800);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
