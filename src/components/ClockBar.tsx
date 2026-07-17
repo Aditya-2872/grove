@@ -10,6 +10,7 @@ import { loadAlarm, saveAlarm, type Alarm } from "../prefs";
 import { notifyAlarm, requestNotifyPermission } from "../chime";
 import { useAnimatedOpen } from "../hooks/useAnimatedOpen";
 import { IconClock } from "./icons";
+import TimePicker from "./TimePicker";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -105,16 +106,15 @@ export default function ClockBar() {
             style={{ transformOrigin: "top right" }}
           >
             <div className="mb-2 text-[11px] tracking-wide text-muted-c uppercase">Alarm</div>
-            <input
-              type="time"
-              value={alarm.time}
-              onChange={(e) => {
-                const time = e.target.value;
-                // Keep firesAt in step if they retime an already-armed alarm.
-                update({ ...alarm, time, firesAt: alarm.armed ? nextOccurrence(time) : alarm.firesAt });
-              }}
-              className="surface-soft mb-2 w-full rounded-lg px-3 py-2 text-sm text-c outline-none"
-            />
+            <div className="mb-2">
+              <TimePicker
+                value={alarm.time}
+                onChange={(time) =>
+                  // Keep firesAt in step if they retime an already-armed alarm.
+                  update({ ...alarm, time, firesAt: alarm.armed ? nextOccurrence(time) : alarm.firesAt })
+                }
+              />
+            </div>
             <input
               type="text"
               value={alarm.label}
