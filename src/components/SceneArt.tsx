@@ -43,8 +43,12 @@ function Grass() {
 export default function SceneArt({ index }: { index: number }) {
   const animal = animalForIndex(index);
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-44 overflow-hidden">
-      <svg className="h-full w-full" viewBox="0 0 1440 200" preserveAspectRatio="xMidYMax slice" fill="none">
+    // No fixed height + no "slice": the scene keeps its own aspect ratio and the
+    // strip's height follows the width. A fixed height with `slice` scaled the
+    // art to COVER, cropping the overflow off the top — which beheaded the
+    // creatures on any window wider than ~1267px.
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-0">
+      <svg className="block h-auto w-full" viewBox="0 0 1440 200" preserveAspectRatio="xMidYMax meet" fill="none">
         <path d="M0 140 C 300 108 560 150 820 132 C 1080 116 1260 150 1440 128 L1440 200 L0 200 Z" fill="var(--accent)" opacity="0.12" />
         <path d="M0 172 C 360 150 640 184 900 168 C 1160 154 1300 182 1440 166 L1440 200 L0 200 Z" fill="var(--accent)" opacity="0.16" />
         <Grass />
