@@ -25,10 +25,32 @@ export default function CurationPanel({
 }) {
   const [draft, setDraft] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  // Keep the latest onClose without re-attaching the listeners every render.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
   }, [chat.messages, chat.status]);
+
+  // Dismiss on Escape or a press anywhere outside the panel — so peeking at the
+  // companion and getting back to the canvas is one easy click, not a trip to
+  // the far corner for the × (which stays too).
+  useEffect(() => {
+    const onDown = (e: PointerEvent) => {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) closeRef.current();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeRef.current();
+    };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, []);
 
   const send = () => {
     const v = draft.trim();
@@ -38,7 +60,10 @@ export default function CurationPanel({
   };
 
   return (
-    <div className="fade-in glass absolute top-0 right-0 bottom-0 z-20 flex w-[360px] max-w-[86%] flex-col border-l hair">
+    <div
+      ref={panelRef}
+      className="fade-in glass absolute top-0 right-0 bottom-0 z-20 flex w-[360px] max-w-[86%] flex-col border-l hair"
+    >
       <div className="hair flex items-center justify-between border-b px-4 py-3">
         <div className="flex items-center gap-2">
           <Logo className="accent-text h-4 w-4" />
