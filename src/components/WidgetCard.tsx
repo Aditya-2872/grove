@@ -4,7 +4,7 @@
 // the raw position up to the Canvas, which snaps it to alignment guides.
 // ---------------------------------------------------------------------------
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Widget } from "../types";
 import { sizeOf } from "../generateWorkspace";
 import { useTilt } from "../hooks/useTilt";
@@ -35,6 +35,9 @@ export default function WidgetCard({
   onMoveEnd,
   onResize,
   onDelete,
+  onLift,
+  onLiftMove,
+  onLiftEnd,
 }: {
   widget: Widget;
   index: number;
@@ -46,6 +49,11 @@ export default function WidgetCard({
   onMoveEnd: () => void;
   onResize: (id: string, width: number, height: number) => void;
   onDelete: (id: string) => void;
+  /** Stacked only: long-press picks the card up so it can be dropped on the
+   *  trash zone the Canvas shows. */
+  onLift?: (id: string) => void;
+  onLiftMove?: (x: number, y: number) => void;
+  onLiftEnd?: (id: string) => void;
 }) {
   const drag = useRef<{ px: number; py: number; wx: number; wy: number } | null>(null);
   const resize = useRef<{ px: number; py: number; w: number; h: number } | null>(null);
@@ -108,12 +116,87 @@ export default function WidgetCard({
     resize.current = null;
   }
 
+  // --- stacked: long-press to lift, drag to the trash zone ---
+  // A press that MOVES before the timer fires is a scroll, not a lift, so the
+  // list must stay scrollable from anywhere on the card until we're sure.
+  const [lifted, setLifted] = useState(false);
+  const [dy, setDy] = useState(0);
+  const press = useRef<{ timer: number; sx: number; sy: number } | null>(null);
+  // smoke-in is an entrance, but it fills forwards — and a filling CSS animation
+  // outranks inline styles, so it would pin transform and the lifted card could
+  // never follow the finger. Retire the class once it has played.
+  const [entered, setEntered] = useState(false);
+  const LIFT_MS = 320;
+  const SLOP = 8;
+
+  function cancelPress() {
+    if (press.current?.timer) window.clearTimeout(press.current.timer);
+    press.current = null;
+  }
+  function onStackDown(e: React.PointerEvent) {
+    const sx = e.clientX;
+    const sy = e.clientY;
+    const el = e.currentTarget as HTMLElement;
+    const pid = e.pointerId;
+    const timer = window.setTimeout(() => {
+      if (press.current) press.current.timer = 0;
+      try {
+        el.setPointerCapture(pid);
+      } catch {
+        /* pointer already gone */
+      }
+      setEntered(true); // never replay the entrance after the card is touched
+      setLifted(true);
+      navigator.vibrate?.(12);
+      onLift?.(widget.id);
+    }, LIFT_MS);
+    press.current = { timer, sx, sy };
+  }
+  function onStackMove(e: React.PointerEvent) {
+    const p = press.current;
+    if (!p) return;
+    if (!lifted) {
+      if (Math.abs(e.clientY - p.sy) > SLOP || Math.abs(e.clientX - p.sx) > SLOP) cancelPress();
+      return;
+    }
+    setDy(e.clientY - p.sy);
+    onLiftMove?.(e.clientX, e.clientY);
+  }
+  function onStackUp() {
+    if (lifted) {
+      onLiftEnd?.(widget.id);
+      setLifted(false);
+      setDy(0);
+    }
+    cancelPress();
+  }
+
+  // touch-action can't be changed mid-gesture, so once lifted we block the
+  // page's scroll directly. Non-passive, or preventDefault is ignored.
+  useEffect(() => {
+    if (!lifted) return;
+    const block = (e: TouchEvent) => e.preventDefault();
+    document.addEventListener("touchmove", block, { passive: false });
+    return () => document.removeEventListener("touchmove", block);
+  }, [lifted]);
+  useEffect(() => cancelPress, []);
+
   return (
     <div
-      className={stacked ? "smoke-in relative w-full" : "smoke-in absolute"}
+      className={`${entered ? "" : "smoke-in"} ${stacked ? "relative w-full" : "absolute"}`}
+      // self only: pop-in/fade-in from children bubble through here too
+      onAnimationEnd={(e) => e.target === e.currentTarget && setEntered(true)}
       style={
         stacked
-          ? { minHeight: h, animationDelay: `${Math.min(index * 0.08, 0.6)}s` }
+          ? {
+              minHeight: h,
+              animationDelay: `${Math.min(index * 0.08, 0.6)}s`,
+              // lifted: ride the finger, floating above the rest of the column
+              transform: lifted ? `translateY(${dy}px) scale(1.04)` : undefined,
+              zIndex: lifted ? 40 : undefined,
+              transition: lifted ? "none" : "transform 0.25s cubic-bezier(0.22, 1, 0.36, 1)",
+              willChange: lifted ? "transform" : undefined,
+            }
           : {
               left: widget.x,
               top: widget.y,
@@ -134,11 +217,15 @@ export default function WidgetCard({
       >
       {/* header / drag handle */}
       <div
-        onPointerDown={stacked ? undefined : onHeaderDown}
-        onPointerMove={stacked ? undefined : onHeaderMove}
-        onPointerUp={stacked ? undefined : onHeaderUp}
-        className={`flex touch-none items-center justify-between px-4 pt-3 pb-1.5 ${
-          stacked ? "" : "cursor-grab active:cursor-grabbing"
+        onPointerDown={stacked ? onStackDown : onHeaderDown}
+        onPointerMove={stacked ? onStackMove : onHeaderMove}
+        onPointerUp={stacked ? onStackUp : onHeaderUp}
+        onPointerCancel={stacked ? onStackUp : undefined}
+        // In the column the header must NOT swallow touch-action, or the list
+        // can't be scrolled by dragging from a card header — which is most of
+        // the card. Only the lifted card takes the gesture.
+        className={`flex items-center justify-between px-4 pt-3 pb-1.5 ${
+          stacked ? (lifted ? "touch-none" : "") : "touch-none cursor-grab active:cursor-grabbing"
         }`}
       >
         {editingTitle ? (

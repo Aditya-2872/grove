@@ -13,6 +13,7 @@ import SceneArt from "./SceneArt";
 import SceneryLayer from "./Scenery";
 import RevealTrail from "./RevealTrail";
 import SceneryMenu from "./SceneryMenu";
+import { IconTrash } from "./icons";
 
 const SNAP = 6;
 
@@ -131,18 +132,48 @@ export default function Canvas({
 
   const clearGuides = () => setGuides({ v: [], h: [] });
 
+  // --- stacked: lift a card and drop it on the trash zone ---
+  const [lifting, setLifting] = useState<string | null>(null);
+  const [overTrash, setOverTrash] = useState(false);
+  const overTrashRef = useRef(false); // pointerup reads this, not the state
+  const trashRef = useRef<HTMLDivElement | null>(null);
+
+  const handleLift = (id: string) => {
+    setLifting(id);
+    overTrashRef.current = false;
+    setOverTrash(false);
+  };
+  const handleLiftMove = (x: number, y: number) => {
+    const r = trashRef.current?.getBoundingClientRect();
+    const over = !!r && y >= r.top && y <= r.bottom && x >= r.left && x <= r.right;
+    if (over !== overTrashRef.current) {
+      overTrashRef.current = over;
+      setOverTrash(over);
+      if (over) navigator.vibrate?.(18); // "it'll drop here"
+    }
+  };
+  const handleLiftEnd = (id: string) => {
+    if (overTrashRef.current) onDelete(id);
+    setLifting(null);
+    overTrashRef.current = false;
+    setOverTrash(false);
+  };
+
   return (
-    // overflow-auto, not hidden: dragging is clamped so nothing can be pushed
-    // out, but if the WINDOW shrinks below existing widgets they must stay
-    // reachable rather than being sealed off.
-    <div ref={wrapRef} className="relative h-full w-full overflow-auto" style={{ background: "var(--bg)" }}>
+    // Two layers. The outer one never scrolls and holds the scenery, so the
+    // world stays put behind the content like a real backdrop instead of
+    // sliding away with the widgets.
+    <div className="relative h-full w-full overflow-hidden" style={{ background: "var(--bg)" }}>
       {/* scene at the back, hidden by the reveal-trail until the cursor unveils it */}
       <SceneryLayer scenery={scenery} />
       <RevealTrail />
       <div className="dots pointer-events-none absolute inset-0" />
       <SceneArt index={sceneIndex} />
-      <SceneryMenu scenery={scenery} onChange={onChangeScenery} />
 
+      {/* The scroller. overflow-auto, not hidden: dragging is clamped so nothing
+          can be pushed out, but if the WINDOW shrinks below existing widgets they
+          must stay reachable rather than being sealed off. */}
+      <div ref={wrapRef} className="absolute inset-0 overflow-auto">
       {widgets.length === 0 ? (
         <div className="pointer-events-none flex h-full w-full items-center justify-center px-6 text-center">
           <p className="text-sm text-muted-c">A quiet space. Add a widget to begin.</p>
@@ -163,6 +194,9 @@ export default function Canvas({
               onMoveEnd={clearGuides}
               onResize={handleResize}
               onDelete={onDelete}
+              onLift={handleLift}
+              onLiftMove={handleLiftMove}
+              onLiftEnd={handleLiftEnd}
             />
           ))}
         </div>
@@ -187,6 +221,32 @@ export default function Canvas({
       {guides.h.map((hy, i) => (
         <div key={`h${i}`} className="guide-h" style={{ top: hy, zIndex: 20 }} />
       ))}
+      </div>
+
+      {/* outside the scroller: a control, so it stays put while content scrolls */}
+      <SceneryMenu scenery={scenery} onChange={onChangeScenery} />
+
+      {/* Drop-to-delete. Only exists while a card is actually lifted, so it costs
+          no space the rest of the time. */}
+      {stacked && lifting && (
+        <div
+          ref={trashRef}
+          className="pop-in pointer-events-none fixed inset-x-0 bottom-0 z-[45] flex h-32 flex-col items-center justify-center gap-1.5"
+          style={{
+            background: overTrash
+              ? "linear-gradient(0deg, rgba(184,86,76,0.92), rgba(184,86,76,0))"
+              : "linear-gradient(0deg, rgba(0,0,0,0.72), rgba(0,0,0,0))",
+            transition: "background 0.2s ease",
+          }}
+        >
+          <IconTrash
+            className={`h-6 w-6 transition-transform ${overTrash ? "scale-125 text-white" : "text-muted-c"}`}
+          />
+          <span className={`text-xs ${overTrash ? "text-white" : "text-muted-c"}`}>
+            {overTrash ? "Release to delete" : "Drag here to delete"}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

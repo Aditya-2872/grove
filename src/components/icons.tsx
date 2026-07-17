@@ -38,6 +38,18 @@ export const IconClose = ({ className }: P) =>
 export const IconPlus = ({ className }: P) =>
   svg(className, <><path d="M12 5v14" /><path d="M5 12h14" /></>);
 
+export const IconTrash = ({ className }: P) =>
+  svg(
+    className,
+    <>
+      <path d="M4 7h16" />
+      <path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7" />
+      <path d="M6.5 7l.8 11.2a1.8 1.8 0 0 0 1.8 1.8h5.8a1.8 1.8 0 0 0 1.8-1.8L17.5 7" />
+      <path d="M10.5 11v5" />
+      <path d="M13.5 11v5" />
+    </>,
+  );
+
 export const IconScene = ({ className }: P) =>
   svg(className, <><circle cx="8" cy="7" r="2" /><path d="M3 18l5-6 4 4 3-4 6 6" /><path d="M3 20h18" /></>);
 

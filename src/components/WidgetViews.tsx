@@ -23,6 +23,59 @@ import Sparkline from "./Sparkline";
 
 type ChangeFn = (updated: Widget) => void;
 
+// A goal of 5000 steps can't be reached one tap at a time, so the +/- step
+// scales with the target: always ~20-25 taps to fill the ring, snapped to a
+// round number (5000 -> 200, 10000 -> 500, 8 hours -> 1).
+function niceStep(target?: number): number {
+  if (!target || target <= 20) return 1;
+  const raw = target / 20;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const n = raw / mag;
+  return (n < 1.5 ? 1 : n < 3.5 ? 2 : n < 7.5 ? 5 : 10) * mag;
+}
+
+// An editable number that only commits on blur/Enter — so typing "5000" logs
+// one value, not a reading for 5, 50 and 500 on the way there.
+function ValueField({
+  value,
+  onCommit,
+  className,
+}: {
+  value: number;
+  onCommit: (n: number) => void;
+  className: string;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    const n = Number(draft);
+    if (draft !== null && draft.trim() !== "" && Number.isFinite(n)) onCommit(Math.max(0, n));
+    setDraft(null);
+  };
+  return (
+    <input
+      type="number"
+      inputMode="numeric"
+      value={draft ?? String(value)}
+      onFocus={(e) => {
+        setDraft(String(value));
+        e.currentTarget.select();
+      }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+        if (e.key === "Escape") {
+          setDraft(null);
+          e.currentTarget.blur();
+        }
+      }}
+      title="Type a value"
+      className={`no-spin bg-transparent text-center tabular-nums outline-none ${className}`}
+    />
+  );
+}
+
 const STICKY_TINTS = ["#242c22", "#2b2a20", "#202c2a", "#2a2028", "#26281f", "#1f2530"];
 const STICKY_GRADIENT =
   "linear-gradient(155deg, color-mix(in srgb, var(--accent) 26%, #10140f), color-mix(in srgb, var(--accent) 8%, #10140f))";
@@ -332,6 +385,7 @@ export function MetricView({ widget, onChange }: { widget: MetricWidget; onChang
   };
   const hasTarget = typeof widget.target === "number" && widget.target > 0;
   const pct = hasTarget ? Math.min(100, (widget.value / (widget.target as number)) * 100) : 0;
+  const step = niceStep(widget.target);
   const R = 30;
   const CIRC = 2 * Math.PI * R;
 
@@ -356,7 +410,7 @@ export function MetricView({ widget, onChange }: { widget: MetricWidget; onChang
               />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-lg font-light tabular-nums text-c">{widget.value}</span>
+              <ValueField value={widget.value} onCommit={setValue} className="w-16 text-lg font-light text-c" />
               <span className="text-[10px] text-muted-c">
                 / {widget.target}
                 {widget.unit ? " " + widget.unit : ""}
@@ -365,23 +419,25 @@ export function MetricView({ widget, onChange }: { widget: MetricWidget; onChang
           </div>
         ) : (
           <div className="text-center">
-            <div className="text-3xl font-light tabular-nums text-c">{widget.value}</div>
+            <ValueField value={widget.value} onCommit={setValue} className="w-24 text-3xl font-light text-c" />
             {widget.unit ? <div className="text-xs text-muted-c">{widget.unit}</div> : null}
           </div>
         )}
         <div className="flex flex-col gap-2">
           <button
-            onClick={() => setValue(widget.value + 1)}
-            className="size-8 rounded-full text-[#0a0d0b] transition hover:brightness-110 active:scale-90"
+            onClick={() => setValue(widget.value + step)}
+            className="h-8 min-w-8 rounded-full px-2 text-xs font-medium text-[#0a0d0b] tabular-nums transition hover:brightness-110 active:scale-90"
             style={{ background: "var(--accent)" }}
+            title={`Add ${step}`}
           >
-            +
+            {step === 1 ? "+" : `+${step}`}
           </button>
           <button
-            onClick={() => setValue(widget.value - 1)}
-            className="surface size-8 rounded-full text-c transition hover:brightness-125 active:scale-90"
+            onClick={() => setValue(widget.value - step)}
+            className="surface h-8 min-w-8 rounded-full px-2 text-xs font-medium text-c tabular-nums transition hover:brightness-125 active:scale-90"
+            title={`Subtract ${step}`}
           >
-            −
+            {step === 1 ? "−" : `−${step}`}
           </button>
         </div>
       </div>

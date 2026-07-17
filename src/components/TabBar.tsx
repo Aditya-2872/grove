@@ -53,7 +53,7 @@ function Tab({
           onClose();
         }}
         className="touch-visible shrink-0 opacity-0 transition hover:text-c group-hover:opacity-100"
-        title="Close tab"
+        title="Delete goal"
       >
         <IconClose className="h-3.5 w-3.5" />
       </button>

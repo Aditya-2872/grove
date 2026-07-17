@@ -230,6 +230,16 @@ input[type="range"] {
 input[type="checkbox"] {
   accent-color: var(--accent);
 }
+/* Number fields that read as plain text (the big metric value): no spinners. */
+.no-spin::-webkit-outer-spin-button,
+.no-spin::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.no-spin {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
 /* Native date/time inputs render dark instead of stark white. */
 input[type="time"],
 input[type="date"] {

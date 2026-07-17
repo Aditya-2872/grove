@@ -33,6 +33,7 @@ import AddWidgetMenu from "./components/AddWidgetMenu";
 import Composer from "./components/Composer";
 import CurationPanel from "./components/CurationPanel";
 import SettingsModal from "./components/SettingsModal";
+import ConfirmDialog from "./components/ConfirmDialog";
 import { Logo } from "./components/icons";
 
 function bootstrap(): AppState {
@@ -569,6 +570,18 @@ export default function App({
     await flushNow(); // save the last edit while the session is still valid
     await signOut();
   };
+
+  // Closing a tab deletes the goal and every widget in it, from the cloud too —
+  // far too final for a stray click on a small "x". Both it and sign-out ask
+  // first.
+  const [confirming, setConfirming] = useState<
+    { kind: "close"; id: string; title: string } | { kind: "signout" } | null
+  >(null);
+  const askCloseWorkspace = (id: string) => {
+    const ws = state.workspaces.find((w) => w.id === id);
+    setConfirming({ kind: "close", id, title: ws?.title?.trim() || "Untitled" });
+  };
+  const askSignOut = () => setConfirming({ kind: "signout" });
   const handleSwitchProfile = onSwitchProfile
     ? async () => {
         await flushNow(); // guarantee this profile's last edit lands before remount
@@ -631,12 +644,12 @@ export default function App({
           workspaces={state.workspaces}
           activeId={state.activeId}
           onSelect={selectWorkspace}
-          onClose={closeWorkspace}
+          onClose={askCloseWorkspace}
           onNew={openComposer}
           onRename={renameWorkspace}
           onOpenSettings={() => setSettingsOpen(true)}
           onSwitchProfile={handleSwitchProfile}
-          onSignOut={cloudEnabled && user ? handleSignOut : undefined}
+          onSignOut={cloudEnabled && user ? askSignOut : undefined}
         />
       )}
 
@@ -652,7 +665,7 @@ export default function App({
             </button>
           )}
           <button
-            onClick={handleSignOut}
+            onClick={askSignOut}
             className="glass rounded-full px-3.5 py-1.5 text-xs text-muted-c transition hover:text-c"
           >
             sign out
@@ -711,6 +724,26 @@ export default function App({
       )}
 
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+
+      {confirming && (
+        <ConfirmDialog
+          title={confirming.kind === "signout" ? "Sign out?" : "Delete this goal?"}
+          message={
+            confirming.kind === "signout"
+              ? "Everything is saved. You'll need to sign in again to come back to it."
+              : `“${confirming.title}” and every widget in it will be permanently deleted. This can't be undone.`
+          }
+          confirmLabel={confirming.kind === "signout" ? "Sign out" : "Delete"}
+          danger={confirming.kind === "close"}
+          onConfirm={() => {
+            const c = confirming;
+            setConfirming(null);
+            if (c.kind === "signout") void handleSignOut();
+            else closeWorkspace(c.id);
+          }}
+          onCancel={() => setConfirming(null)}
+        />
+      )}
     </div>
   );
 }
