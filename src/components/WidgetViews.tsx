@@ -161,8 +161,9 @@ export function ChecklistView({ widget, onChange }: { widget: ChecklistWidget; o
             <span className={it.done ? "flex-1 text-muted-c line-through" : "flex-1 text-c"}>{it.text}</span>
             <button
               onClick={() => remove(it.id)}
-              className="touch-visible text-muted-c opacity-0 transition hover:text-c group-hover:opacity-100"
+              className="touch-visible text-muted-c opacity-0 transition group-focus-within:opacity-100 hover:text-c group-hover:opacity-100"
               title="Remove"
+              aria-label={`Remove: ${it.text}`}
             >
               ×
             </button>

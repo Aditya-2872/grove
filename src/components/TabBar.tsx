@@ -23,37 +23,55 @@ function Tab({
   onRename: (title: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const label = ws.title || "Untitled";
 
-  return (
-    <div
-      onClick={onSelect}
-      onDoubleClick={() => setEditing(true)}
-      className={`group flex max-w-48 min-w-32 shrink-0 cursor-pointer items-center gap-2 rounded-full px-3 py-1.5 text-sm transition ${
-        active ? "surface text-c" : "text-muted-c hover:text-c"
-      }`}
-      style={active ? { boxShadow: "0 0 22px var(--glow)" } : undefined}
-    >
-      <span className="size-2 shrink-0 rounded-full" style={{ background: "var(--accent)" }} />
-      {editing ? (
+  // Editing: an input capsule in place of the tab (a text field can't live
+  // inside a <button>).
+  if (editing) {
+    return (
+      <div className="surface flex max-w-48 min-w-32 shrink-0 items-center gap-2 rounded-full px-3 py-1.5 text-sm">
+        <span className="size-2 shrink-0 rounded-full" style={{ background: "var(--accent)" }} />
         <input
           autoFocus
           value={ws.title}
-          onClick={(e) => e.stopPropagation()}
           onChange={(e) => onRename(e.target.value)}
           onBlur={() => setEditing(false)}
-          onKeyDown={(e) => e.key === "Enter" && setEditing(false)}
-          className="w-full bg-transparent outline-none"
+          onKeyDown={(e) => (e.key === "Enter" || e.key === "Escape") && setEditing(false)}
+          className="w-full bg-transparent text-c outline-none"
         />
-      ) : (
-        <span className="flex-1 truncate">{ws.title || "Untitled"}</span>
-      )}
+      </div>
+    );
+  }
+
+  // The tab itself is now a real <button> — reachable and selectable by keyboard
+  // (Tab to it, Enter/Space to switch; F2 to rename). The close button is a
+  // sibling, not nested (a button can't contain a button), and appears on hover
+  // OR keyboard focus so it's never a hidden target.
+  return (
+    <div className="group relative flex shrink-0">
       <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onClose();
+        onClick={onSelect}
+        onDoubleClick={() => setEditing(true)}
+        onKeyDown={(e) => {
+          if (e.key === "F2") {
+            e.preventDefault();
+            setEditing(true);
+          }
         }}
-        className="touch-visible shrink-0 opacity-0 transition hover:text-c group-hover:opacity-100"
+        title="Double-click or F2 to rename"
+        className={`flex max-w-48 min-w-32 items-center gap-2 rounded-full py-1.5 pr-8 pl-3 text-left text-sm transition ${
+          active ? "surface text-c" : "text-muted-c hover:text-c"
+        }`}
+        style={active ? { boxShadow: "0 0 22px var(--glow)" } : undefined}
+      >
+        <span className="size-2 shrink-0 rounded-full" style={{ background: "var(--accent)" }} />
+        <span className="flex-1 truncate">{label}</span>
+      </button>
+      <button
+        onClick={onClose}
+        aria-label={`Delete goal: ${label}`}
         title="Delete goal"
+        className="touch-visible absolute top-1/2 right-1.5 -translate-y-1/2 rounded p-0.5 text-muted-c opacity-0 transition group-focus-within:opacity-100 hover:text-c group-hover:opacity-100"
       >
         <IconClose className="h-3.5 w-3.5" />
       </button>

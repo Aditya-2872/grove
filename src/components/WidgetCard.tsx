@@ -250,8 +250,9 @@ export default function WidgetCard({
         <button
           onPointerDown={(e) => e.stopPropagation()}
           onClick={() => onDelete(widget.id)}
-          className="touch-visible ml-2 text-muted-c opacity-0 transition hover:text-c group-hover/card:opacity-100"
+          className="touch-visible ml-2 text-muted-c opacity-0 transition group-focus-within/card:opacity-100 hover:text-c group-hover/card:opacity-100"
           title="Delete widget"
+          aria-label={`Delete widget: ${widget.title}`}
         >
           <IconClose className="h-3.5 w-3.5" />
         </button>
