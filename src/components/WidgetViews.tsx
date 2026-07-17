@@ -12,13 +12,14 @@ import type {
   ProgressWidget,
   BmiWidget,
   MetricWidget,
+  MetricPeriod,
   HabitWidget,
   Widget,
 } from "../types";
 import { uid } from "../types";
 import { notifyTimerDone, requestTimerNotifyPermission } from "../chime";
 import { computeStreak, toggleToday, recentDays } from "../streak";
-import { recordToday, series } from "../history";
+import { recordToday, series, effectiveValue } from "../history";
 import Sparkline from "./Sparkline";
 
 type ChangeFn = (updated: Widget) => void;
@@ -33,6 +34,21 @@ function niceStep(target?: number): number {
   const n = raw / mag;
   return (n < 1.5 ? 1 : n < 3.5 ? 2 : n < 7.5 ? 5 : 10) * mag;
 }
+
+// Cycled by the period chip. Keyed by String(period) so undefined ("total",
+// the accumulate-forever default) is a real entry rather than a special case.
+const PERIOD_LABEL: Record<string, string> = {
+  undefined: "total",
+  day: "daily",
+  week: "weekly",
+  month: "monthly",
+};
+const NEXT_PERIOD: Record<string, MetricPeriod | undefined> = {
+  undefined: "day",
+  day: "week",
+  week: "month",
+  month: undefined,
+};
 
 // An editable number that only commits on blur/Enter — so typing "5000" logs
 // one value, not a reading for 5, 50 and 500 on the way there.
@@ -379,12 +395,16 @@ export function BmiView({ widget, onChange }: { widget: BmiWidget; onChange: Cha
 }
 
 export function MetricView({ widget, onChange }: { widget: MetricWidget; onChange: ChangeFn }) {
-  const setValue = (value: number) => {
-    const v = Math.max(0, value);
+  // What this period is worth, not what was last written. Everything below —
+  // ring, number, and the +/- maths — reads THIS. A display-only fix would make
+  // the first tap on day two read 520 instead of 20.
+  const value = effectiveValue(widget.value, widget.log, widget.period);
+  const setValue = (next: number) => {
+    const v = Math.max(0, next);
     onChange({ ...widget, value: v, log: recordToday(widget.log, v) });
   };
   const hasTarget = typeof widget.target === "number" && widget.target > 0;
-  const pct = hasTarget ? Math.min(100, (widget.value / (widget.target as number)) * 100) : 0;
+  const pct = hasTarget ? Math.min(100, (value / (widget.target as number)) * 100) : 0;
   const step = niceStep(widget.target);
   const R = 30;
   const CIRC = 2 * Math.PI * R;
@@ -410,7 +430,7 @@ export function MetricView({ widget, onChange }: { widget: MetricWidget; onChang
               />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <ValueField value={widget.value} onCommit={setValue} className="w-16 text-lg font-light text-c" />
+              <ValueField value={value} onCommit={setValue} className="w-16 text-lg font-light text-c" />
               <span className="text-[10px] text-muted-c">
                 / {widget.target}
                 {widget.unit ? " " + widget.unit : ""}
@@ -419,13 +439,13 @@ export function MetricView({ widget, onChange }: { widget: MetricWidget; onChang
           </div>
         ) : (
           <div className="text-center">
-            <ValueField value={widget.value} onCommit={setValue} className="w-24 text-3xl font-light text-c" />
+            <ValueField value={value} onCommit={setValue} className="w-24 text-3xl font-light text-c" />
             {widget.unit ? <div className="text-xs text-muted-c">{widget.unit}</div> : null}
           </div>
         )}
         <div className="flex flex-col gap-2">
           <button
-            onClick={() => setValue(widget.value + step)}
+            onClick={() => setValue(value + step)}
             className="h-8 min-w-8 rounded-full px-2 text-xs font-medium text-[#0a0d0b] tabular-nums transition hover:brightness-110 active:scale-90"
             style={{ background: "var(--accent)" }}
             title={`Add ${step}`}
@@ -433,7 +453,7 @@ export function MetricView({ widget, onChange }: { widget: MetricWidget; onChang
             {step === 1 ? "+" : `+${step}`}
           </button>
           <button
-            onClick={() => setValue(widget.value - step)}
+            onClick={() => setValue(value - step)}
             className="surface h-8 min-w-8 rounded-full px-2 text-xs font-medium text-c tabular-nums transition hover:brightness-125 active:scale-90"
             title={`Subtract ${step}`}
           >
@@ -442,7 +462,7 @@ export function MetricView({ widget, onChange }: { widget: MetricWidget; onChang
         </div>
       </div>
 
-      <div className="flex items-center gap-2 text-xs text-muted-c">
+      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-c">
         <label className="flex items-center gap-1">
           goal
           <input
@@ -454,6 +474,13 @@ export function MetricView({ widget, onChange }: { widget: MetricWidget; onChang
             className="surface-soft w-12 rounded px-1 py-0.5 text-c outline-none"
           />
         </label>
+        <button
+          onClick={() => onChange({ ...widget, period: NEXT_PERIOD[String(widget.period)] })}
+          className="surface-soft shrink-0 rounded px-1.5 py-0.5 text-c transition hover:brightness-125"
+          title="How often this starts over"
+        >
+          {PERIOD_LABEL[String(widget.period)]}
+        </button>
         <label className="flex flex-1 items-center gap-1">
           unit
           <input

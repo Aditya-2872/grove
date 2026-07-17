@@ -94,24 +94,24 @@ type Idea = { spec: WidgetSpec; rationale: string };
 // things you can NAME, and no widget exists just to fill space.
 const CURATION_IDEAS: Record<Domain, Idea[]> = {
   fitness: [
-    { spec: { type: "metric", title: "Sleep", value: 0, unit: "hrs", target: 8 }, rationale: "Recovery drives progress as much as training." },
+    { spec: { type: "metric", title: "Sleep", value: 0, unit: "hrs", target: 8, period: "day" }, rationale: "Recovery drives progress as much as training." },
     { spec: { type: "metric", title: "Body weight", value: 0, unit: "kg" }, rationale: "A weekly weigh-in shows the real trend." },
-    { spec: { type: "metric", title: "Steps", value: 0, unit: "steps", target: 8000 }, rationale: "Movement outside the gym quietly adds up." },
-    { spec: { type: "metric", title: "Home-cooked meals", value: 0, unit: "meals", target: 5 }, rationale: "Most plans are won or lost in the kitchen." },
+    { spec: { type: "metric", title: "Steps", value: 0, unit: "steps", target: 8000, period: "day" }, rationale: "Movement outside the gym quietly adds up." },
+    { spec: { type: "metric", title: "Home-cooked meals", value: 0, unit: "meals", target: 5, period: "week" }, rationale: "Most plans are won or lost in the kitchen." },
   ],
   study: [
     { spec: { type: "timer", title: "Pomodoro", durationSeconds: 25 * 60 }, rationale: "Short focused blocks beat long unfocused ones." },
-    { spec: { type: "metric", title: "Practice questions", value: 0, unit: "questions", target: 20 }, rationale: "Active recall sticks; passive reading doesn't." },
+    { spec: { type: "metric", title: "Practice questions", value: 0, unit: "questions", target: 20, period: "day" }, rationale: "Active recall sticks; passive reading doesn't." },
     { spec: { type: "habit", title: "Revise something today" }, rationale: "A visible chain is quietly motivating." },
   ],
   writing: [
-    { spec: { type: "metric", title: "Words today", value: 0, unit: "words", target: 500 }, rationale: "A small daily count compounds fast." },
+    { spec: { type: "metric", title: "Words today", value: 0, unit: "words", target: 500, period: "day" }, rationale: "A small daily count compounds fast." },
     { spec: { type: "metric", title: "Total words", value: 0, unit: "words" }, rationale: "Watch the manuscript grow, with no finish line to fake." },
     { spec: { type: "habit", title: "Write every day" }, rationale: "Momentum matters more than mood." },
   ],
   finance: [
     { spec: { type: "metric", title: "Savings", value: 0, unit: "$", target: 1000 }, rationale: "Name the number you're saving toward." },
-    { spec: { type: "metric", title: "Spent this month", value: 0, unit: "$" }, rationale: "The number that decides the other one." },
+    { spec: { type: "metric", title: "Spent this month", value: 0, unit: "$", period: "month" }, rationale: "The number that decides the other one." },
     { spec: { type: "checklist", title: "Cancel subscriptions", items: [ci("List every recurring charge"), ci("Cancel the unused")] }, rationale: "Recurring charges are the quiet leak." },
   ],
   work: [
@@ -122,7 +122,7 @@ const CURATION_IDEAS: Record<Domain, Idea[]> = {
   habit: [
     { spec: { type: "habit", title: "Daily check-in" }, rationale: "The chain is its own reward." },
     { spec: { type: "timer", title: "Session", durationSeconds: 10 * 60 }, rationale: "Small and daily beats big and rare." },
-    { spec: { type: "metric", title: "Weekly check-ins", value: 0, unit: "check-ins", target: 5 }, rationale: "Aim for a weekly count, not perfection." },
+    { spec: { type: "metric", title: "Weekly check-ins", value: 0, unit: "check-ins", target: 5, period: "week" }, rationale: "Aim for a weekly count, not perfection." },
   ],
   general: [
     { spec: { type: "habit", title: "Work on it today" }, rationale: "Consistency you can see." },

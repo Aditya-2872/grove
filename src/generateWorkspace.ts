@@ -87,9 +87,9 @@ const DOMAINS: DomainDef[] = [
     // no honest finish line, the metric ships without a target rather than
     // guessing. Counts differ per domain because the domains differ.
     widgets: () => [
-      { type: "metric", title: "Workouts this week", value: 0, unit: "sessions", target: 4 },
+      { type: "metric", title: "Workouts this week", value: 0, unit: "sessions", target: 4, period: "week" },
       { type: "metric", title: "Body weight", value: 0, unit: "kg" },
-      { type: "metric", title: "Steps", value: 0, unit: "steps", target: 8000 },
+      { type: "metric", title: "Steps", value: 0, unit: "steps", target: 8000, period: "day" },
       { type: "checklist", title: "Getting set up", items: [check("Book a gym induction"), check("Buy shoes that fit"), check("Pick 3 days that are yours"), check("Take a starting photo")] },
     ],
   },
@@ -109,7 +109,7 @@ const DOMAINS: DomainDef[] = [
     test: /(write|writing|novel|book|blog|essay|thesis|article|screenplay|story|content|journal)/,
     suggests: ["counter", "checklist", "progress", "timer", "sticky_note"],
     widgets: () => [
-      { type: "metric", title: "Words today", value: 0, unit: "words", target: 500 },
+      { type: "metric", title: "Words today", value: 0, unit: "words", target: 500, period: "day" },
       { type: "metric", title: "Total words", value: 0, unit: "words" },
       { type: "habit", title: "Write every day" },
       note("Logline", "One sentence: who wants what, and what stands in the way?"),
@@ -121,7 +121,7 @@ const DOMAINS: DomainDef[] = [
     suggests: ["progress", "metric", "counter", "checklist", "sticky_note"],
     widgets: () => [
       { type: "metric", title: "Saved", value: 0, unit: "$" },
-      { type: "metric", title: "Spent this month", value: 0, unit: "$" },
+      { type: "metric", title: "Spent this month", value: 0, unit: "$", period: "month" },
       { type: "checklist", title: "Cut these costs", items: [check("Cancel unused subscriptions"), check("Switch to a cheaper phone plan"), check("Set up a payday transfer"), check("Sell what you don't use")] },
     ],
   },
@@ -287,6 +287,10 @@ export function specToWidget(spec: WidgetSpec, x: number, y: number): Widget {
         unit: spec.unit ? clampStr(spec.unit, 12) : undefined,
         target: optNum(spec.target),
         direction: spec.direction === "down" ? "down" : "up",
+        // Anything the AI sends that isn't one of these three is dropped to
+        // undefined = accumulates forever, which is the safe reading.
+        period:
+          spec.period === "day" || spec.period === "week" || spec.period === "month" ? spec.period : undefined,
       };
     case "habit":
       return {

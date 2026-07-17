@@ -23,6 +23,7 @@
 export const WIDGET_SHAPES =
   `Each widget is ONE of these JSON shapes:\n` +
   `{"type":"metric","title":"…","value":0,"unit":"chapters","target":14}   // a number climbing to a real finish line: draws a fill ring and "value / target unit"\n` +
+  `{"type":"metric","title":"…","value":0,"unit":"words","target":500,"period":"day"}  // period "day"|"week"|"month": the value STARTS OVER each period\n` +
   `{"type":"metric","title":"…","value":0,"unit":"bpm"}                     // target OMITTED — a level you watch with no finish line: draws a big number and a trend line\n` +
   `{"type":"checklist","title":"…","items":["Real name 1","Real name 2"]}   // items MUST be real, specific names — never "Item 1"\n` +
   `{"type":"habit","title":"…"}                                             // a daily check-in chain: current and longest streak, plus a 14-day dot trail\n` +
@@ -50,7 +51,8 @@ const SHAPE_TABLE =
   `- Once a habit's streak is going, it asks to be checked in on any day it is missed. So never put a habit on something with legitimate off days: running has rest days, a no-spend streak breaks on a real grocery run.\n` +
   `- A counter shows NEITHER its unit NOR its target, and steps only by 1. A streak is NEVER a counter (that is a habit). Anything with a unit is a metric.\n` +
   `- A checklist already draws its own "3/5 done" bar. A progress widget beside one shows the same thing twice.\n` +
-  `- A metric's target sets its +/- step size AND its ring percentage, so the target must be the REAL finish line: 21.1 not 20, 103 not 100.`;
+  `- A metric's target sets its +/- step size AND its ring percentage, so the target must be the REAL finish line: 21.1 not 20, 103 not 100.\n` +
+  `- A metric WITHOUT "period" never starts over. So anything whose title says "today", "this week" or "this month" MUST carry the matching period, or it reads 500/500 forever from day two and tells the user the day is already done. "Total words" and "Saved" take no period — they accumulate. Ask: would this number be a fresh 0 tomorrow morning?`;
 
 const RULES =
   `Rules:\n` +

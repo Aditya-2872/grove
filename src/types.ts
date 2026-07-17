@@ -90,7 +90,15 @@ export interface MetricWidget extends WidgetBase {
   target?: number;
   direction?: "up" | "down";
   log?: LogEntry[];
+  /** How often the value starts over. Absent = it accumulates forever ("Total
+   *  words", "Saved"). Set it for anything period-scoped ("Words today",
+   *  "Workouts this week") — without it the ring reads 500/500 on day two and
+   *  the app greets you saying the day is already done. The reset is derived
+   *  from the log, never written: no timers, no server, no stale rollover. */
+  period?: MetricPeriod;
 }
+
+export type MetricPeriod = "day" | "week" | "month";
 
 /** A daily check-in habit. Each check-in is a local "YYYY-MM-DD" date; the
  *  current streak counts consecutive days up to today and breaks on a miss. */

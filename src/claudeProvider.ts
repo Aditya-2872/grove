@@ -35,6 +35,11 @@ const WIDGET_SCHEMA = {
     value: { type: "number", description: "starting value (metric/counter/progress)" },
     unit: { type: "string", description: "e.g. hrs, glasses, km, $ (metric only — a counter renders no unit)" },
     target: { type: "number", description: "the real finish line (metric only; omit for a level with no finish line)" },
+    period: {
+      type: "string",
+      enum: ["day", "week", "month"],
+      description: "metric only: the value starts over each period. Omit for a total that accumulates.",
+    },
     durationSeconds: { type: "number", description: "length in seconds (timer)" },
     content: { type: "string", description: "note body (sticky_note)" },
     heightCm: { type: "number", description: "height in cm (bmi)" },
