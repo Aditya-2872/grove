@@ -102,12 +102,12 @@ const CURATION_IDEAS: Record<Domain, Idea[]> = {
   study: [
     { spec: { type: "timer", title: "Pomodoro", durationSeconds: 25 * 60 }, rationale: "Short focused blocks beat long unfocused ones." },
     { spec: { type: "metric", title: "Practice questions", value: 0, unit: "questions", target: 20, period: "day" }, rationale: "Active recall sticks; passive reading doesn't." },
-    { spec: { type: "habit", title: "Revise something today" }, rationale: "A visible chain is quietly motivating." },
+    { spec: { type: "habit", title: "Revise something today", checkins: [] }, rationale: "A visible chain is quietly motivating." },
   ],
   writing: [
     { spec: { type: "metric", title: "Words today", value: 0, unit: "words", target: 500, period: "day" }, rationale: "A small daily count compounds fast." },
     { spec: { type: "metric", title: "Total words", value: 0, unit: "words" }, rationale: "Watch the manuscript grow, with no finish line to fake." },
-    { spec: { type: "habit", title: "Write every day" }, rationale: "Momentum matters more than mood." },
+    { spec: { type: "habit", title: "Write every day", checkins: [] }, rationale: "Momentum matters more than mood." },
   ],
   finance: [
     { spec: { type: "metric", title: "Savings", value: 0, unit: "$", target: 1000 }, rationale: "Name the number you're saving toward." },
@@ -120,12 +120,12 @@ const CURATION_IDEAS: Record<Domain, Idea[]> = {
     { spec: { type: "checklist", title: "Deliverables", items: [ci("First draft"), ci("Client review"), ci("Handoff & invoice")] }, rationale: "Make 'done' visible." },
   ],
   habit: [
-    { spec: { type: "habit", title: "Daily check-in" }, rationale: "The chain is its own reward." },
+    { spec: { type: "habit", title: "Daily check-in", checkins: [] }, rationale: "The chain is its own reward." },
     { spec: { type: "timer", title: "Session", durationSeconds: 10 * 60 }, rationale: "Small and daily beats big and rare." },
     { spec: { type: "metric", title: "Weekly check-ins", value: 0, unit: "check-ins", target: 5, period: "week" }, rationale: "Aim for a weekly count, not perfection." },
   ],
   general: [
-    { spec: { type: "habit", title: "Work on it today" }, rationale: "Consistency you can see." },
+    { spec: { type: "habit", title: "Work on it today", checkins: [] }, rationale: "Consistency you can see." },
     { spec: { type: "timer", title: "Focus session", durationSeconds: 25 * 60 }, rationale: "One protected block beats a vague intention." },
   ],
 };

@@ -98,7 +98,7 @@ const DOMAINS: DomainDef[] = [
     test: /(study|exam|course|class|revision|learn|assignment|homework|quiz|semester|degree|certification|cfa|gre|sat|test)/,
     suggests: ["habit", "checklist", "timer", "progress", "counter", "sticky_note"],
     widgets: () => [
-      { type: "habit", title: "Study something today" },
+      { type: "habit", title: "Study something today", checkins: [] },
       { type: "timer", title: "Focus session", durationSeconds: 25 * 60 },
       { type: "metric", title: "Study hours", value: 0, unit: "hrs" },
       { type: "checklist", title: "Getting set up", items: [check("List every topic"), check("Find past papers"), check("Book the exam date"), check("Pick a fixed study slot")] },
@@ -111,7 +111,7 @@ const DOMAINS: DomainDef[] = [
     widgets: () => [
       { type: "metric", title: "Words today", value: 0, unit: "words", target: 500, period: "day" },
       { type: "metric", title: "Total words", value: 0, unit: "words" },
-      { type: "habit", title: "Write every day" },
+      { type: "habit", title: "Write every day", checkins: [] },
       note("Logline", "One sentence: who wants what, and what stands in the way?"),
     ],
   },
@@ -141,7 +141,7 @@ const DOMAINS: DomainDef[] = [
     test: /(habit|routine|meditat|mindful|read more|reading|sleep|wake|discipline|consistency|calm|stress)/,
     suggests: ["habit", "counter", "metric", "checklist", "timer", "progress", "sticky_note"],
     widgets: () => [
-      { type: "habit", title: "Daily check-in" },
+      { type: "habit", title: "Daily check-in", checkins: [] },
       { type: "timer", title: "Session", durationSeconds: 10 * 60 },
       { type: "checklist", title: "Make it easy", items: [check("Put it where you'll see it"), check("Pick the same time each day"), check("Decide the smallest version"), check("Tell someone")] },
     ],
@@ -171,7 +171,7 @@ function curate(goal: string): Widget[] {
           // A vague checklist ("Get started", "Build momentum") is worse than
           // no checklist — it's the padding that made every tab look the same.
           { type: "progress", title: "Progress", value: 0 },
-          { type: "habit", title: "Work on it today" },
+          { type: "habit", title: "Work on it today", checkins: [] },
           note("What does done look like?", "Describe the finish line in one line. Then the trackers pick themselves."),
         ],
   );
