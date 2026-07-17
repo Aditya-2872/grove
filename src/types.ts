@@ -68,6 +68,12 @@ export interface CounterWidget extends WidgetBase {
 export interface TimerWidget extends WidgetBase {
   type: "timer";
   durationSeconds: number;
+  /** Epoch ms the countdown will hit zero. Present ONLY while running — the
+   *  timer reads wall-clock from this, not a tick counter, so it stays correct
+   *  across tab switches, unmounts, reloads, and background throttling. */
+  endsAt?: number;
+  /** Seconds left while PAUSED (no endsAt). 0 = finished, waiting on Reset. */
+  pausedRemaining?: number;
 }
 
 export interface ProgressWidget extends WidgetBase {

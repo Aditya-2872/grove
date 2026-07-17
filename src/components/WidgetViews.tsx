@@ -220,43 +220,57 @@ export function CounterView({ widget, onChange }: { widget: CounterWidget; onCha
 }
 
 export function TimerView({ widget, onChange }: { widget: TimerWidget; onChange: ChangeFn }) {
-  const [remaining, setRemaining] = useState(widget.durationSeconds);
-  const [running, setRunning] = useState(false);
-  const intervalRef = useRef<number | null>(null);
+  // Repaint tick only — the countdown itself is derived from wall-clock below.
+  const [, force] = useState(0);
   const chimedRef = useRef(false);
+  // Read the freshest widget/onChange from the completion effect without making
+  // them effect deps (which would re-fire it every render onChange changes id).
+  const latest = useRef({ widget, onChange });
+  latest.current = { widget, onChange };
 
+  const running = widget.endsAt != null;
+  const remaining = running
+    ? Math.max(0, Math.round((widget.endsAt! - Date.now()) / 1000))
+    : widget.pausedRemaining ?? widget.durationSeconds;
+  const done = running && remaining === 0;
+
+  // While running, repaint ~4x/sec (cheap; wall-clock does the real counting)
+  // and immediately on tab-return, since the interval is throttled in the
+  // background and the elapsed time must be caught up at once.
   useEffect(() => {
-    if (running) {
-      intervalRef.current = window.setInterval(() => {
-        setRemaining((r) => {
-          if (r <= 1) {
-            setRunning(false);
-            return 0;
-          }
-          return r - 1;
-        });
-      }, 1000);
-    }
+    if (!running) return;
+    const tick = () => force((n) => n + 1);
+    const id = window.setInterval(tick, 250);
+    document.addEventListener("visibilitychange", tick);
     return () => {
-      if (intervalRef.current) window.clearInterval(intervalRef.current);
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", tick);
     };
   }, [running]);
 
-  // Chime + notify once when the countdown reaches zero (reset when re-armed).
+  // Chime once the moment wall-clock crosses the end, then settle to a stopped
+  // 00:00 (clears endsAt so no interval or countdown lingers).
   useEffect(() => {
-    if (remaining === 0 && !chimedRef.current) {
+    if (done && !chimedRef.current) {
       chimedRef.current = true;
-      notifyTimerDone(widget.title);
-    } else if (remaining !== 0) {
-      chimedRef.current = false;
+      const { widget: w, onChange: oc } = latest.current;
+      notifyTimerDone(w.title);
+      oc({ ...w, endsAt: undefined, pausedRemaining: 0 });
     }
-  }, [remaining, widget.title]);
+    if (!done) chimedRef.current = false;
+  }, [done]);
 
+  const start = () => {
+    requestTimerNotifyPermission();
+    const secs =
+      widget.pausedRemaining && widget.pausedRemaining > 0 ? widget.pausedRemaining : widget.durationSeconds;
+    onChange({ ...widget, endsAt: Date.now() + secs * 1000, pausedRemaining: undefined });
+  };
+  const pause = () => onChange({ ...widget, endsAt: undefined, pausedRemaining: remaining });
+  const reset = () => onChange({ ...widget, endsAt: undefined, pausedRemaining: undefined });
   const changeDuration = (deltaSeconds: number) => {
     const next = Math.max(60, widget.durationSeconds + deltaSeconds);
-    onChange({ ...widget, durationSeconds: next });
-    setRemaining(next);
-    setRunning(false);
+    onChange({ ...widget, durationSeconds: next, endsAt: undefined, pausedRemaining: undefined });
   };
 
   const mm = String(Math.floor(remaining / 60)).padStart(2, "0");
@@ -267,16 +281,13 @@ export function TimerView({ widget, onChange }: { widget: TimerWidget; onChange:
       <span className="text-4xl font-light tabular-nums text-c">{mm}:{ss}</span>
       <div className="flex gap-2 text-sm">
         <button
-          onClick={() => {
-            if (!running) requestTimerNotifyPermission();
-            setRunning((v) => !v);
-          }}
+          onClick={() => (running ? pause() : start())}
           className="rounded px-3 py-1 text-[#0a0d0b] transition hover:brightness-110"
           style={{ background: "var(--accent)" }}
         >
           {running ? "Pause" : "Start"}
         </button>
-        <button onClick={() => { setRunning(false); setRemaining(widget.durationSeconds); }} className="surface rounded px-3 py-1 text-c transition hover:brightness-125">
+        <button onClick={reset} className="surface rounded px-3 py-1 text-c transition hover:brightness-125">
           Reset
         </button>
       </div>
