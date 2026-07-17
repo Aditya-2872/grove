@@ -5,9 +5,16 @@
 // (GEMINI_API_KEY — deliberately no VITE_ prefix, so Vite can't inline it into
 // the client bundle). Grove's frontend calls /api/ai instead of Google.
 //
-// The endpoint is not an open relay: every request must carry a valid Supabase
-// access token, so only signed-in Grove users can spend the shared key.
+// The endpoint is not an open relay: every request carries a valid Supabase
+// access token (only signed-in Grove users), AND — the important part — the
+// client sends only a high-level op ({op:"curate", goal} etc.), never a Gemini
+// request body. The proxy builds the payload itself from Grove's own prompts
+// (payloadForOp), with every free-text field clamped and output tokens capped.
+// So a signed-in user can spend the shared key ONLY on Grove's three prompts,
+// not on arbitrary general-purpose inference.
 // ---------------------------------------------------------------------------
+
+import { payloadForOp } from "../src/geminiPayloads";
 
 export const config = { runtime: "edge" };
 
@@ -44,21 +51,25 @@ export default async function handler(req: Request): Promise<Response> {
   }).catch(() => null);
   if (!who || !who.ok) return json({ error: "Sign in to use AI." }, 401);
 
-  // --- forward to Gemini ---
-  let body: { model?: unknown; payload?: unknown };
+  // --- build the payload OURSELVES from the op (never trust a client body) ---
+  let body: Record<string, unknown>;
   try {
-    body = (await req.json()) as { model?: unknown; payload?: unknown };
+    body = (await req.json()) as Record<string, unknown>;
   } catch {
     return json({ error: "Bad request" }, 400);
   }
-  if (!body.payload || typeof body.payload !== "object") return json({ error: "Bad request" }, 400);
+  // JSON.parse("null") / a non-object body would crash `body.op` below with an
+  // unhandled 500 — reject it as a plain bad request instead.
+  if (!body || typeof body !== "object") return json({ error: "Bad request" }, 400);
+  const payload = payloadForOp(body.op, body);
+  if (!payload) return json({ error: "Unknown operation." }, 400);
   const model = typeof body.model === "string" && ALLOWED_MODELS.has(body.model) ? body.model : DEFAULT_MODEL;
 
   try {
     const upstream = await fetch(`${GEMINI}/${model}:generateContent?key=${encodeURIComponent(key)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body.payload),
+      body: JSON.stringify(payload),
       signal: AbortSignal.timeout(25_000),
     });
     // Pass the response straight through (the key is never echoed back).

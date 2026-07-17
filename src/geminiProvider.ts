@@ -12,38 +12,10 @@
 import type { WidgetSpec, ChatMessage, Domain } from "./types";
 import type { AIProvider, AIContext, CurationTurn, CurationResult } from "./ai";
 import { supabase } from "./supabase";
-import { curationBody, WIDGET_SHAPES, ANALYSIS_DESC, SKIPPED_DESC } from "./curationPrompt";
+import { curatePayload, customWidgetPayload, chatPayload, type ProxyOp } from "./geminiPayloads";
 
 const rid = () => crypto.randomUUID();
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
-
-// Gemini responseSchema uses an OpenAPI subset (UPPERCASE types).
-const WIDGET_SCHEMA = {
-  type: "OBJECT",
-  properties: {
-    type: {
-      type: "STRING",
-      enum: ["metric", "checklist", "counter", "timer", "progress", "sticky_note", "habit", "bmi"],
-    },
-    title: { type: "STRING", description: "Short title, ≤40 chars" },
-    value: { type: "NUMBER", description: "starting value (metric/counter/progress)" },
-    unit: { type: "STRING", description: "e.g. hrs, glasses, km, $ (metric only — a counter renders no unit)" },
-    target: { type: "NUMBER", description: "the real finish line (metric only; omit for a level with no finish line)" },
-    period: {
-      type: "STRING",
-      enum: ["day", "week", "month"],
-      description: "metric only: the value starts over each period. Omit for a total that accumulates.",
-    },
-    durationSeconds: { type: "NUMBER", description: "length in seconds (timer)" },
-    content: { type: "STRING", description: "note body (sticky_note)" },
-    heightCm: { type: "NUMBER", description: "height in cm (bmi)" },
-    weightKg: { type: "NUMBER", description: "weight in kg (bmi)" },
-    // Plain strings, not nested objects: deeply-nested schemas can wedge the
-    // model's constrained decoding (observed live: nested items -> 30s+ hangs).
-    items: { type: "ARRAY", description: "row labels (checklist)", items: { type: "STRING" } },
-  },
-  required: ["type", "title"],
-};
 
 /** Normalize the wire shape (checklist rows arrive as strings) into WidgetSpec.
  *  Returns null for junk: callers filter PER WIDGET, so one bad element can
@@ -62,35 +34,10 @@ function normalizeSpec(raw: unknown): WidgetSpec | null {
   return spec as WidgetSpec;
 }
 
-// The complex calls (curate a whole workspace, propose several widgets in chat)
-// describe their JSON shape in the PROMPT rather than via responseSchema. A
-// deeply-nested responseSchema (array-of-objects-containing-arrays) wedges the
-// model's constrained decoding and hangs for 30s+ on the free flash-lite model
-// — observed live. Free-form JSON (responseMimeType only) generates in ~2-3s,
-// and specToWidget() still clamps every field, so nothing untrusted gets through.
-// The prompt itself lives in curationPrompt.ts, shared with the Claude path.
-const curatePrompt = (goal: string) =>
-  curationBody(goal) +
-  `\n\nReturn ONLY a JSON object (no markdown fences, no prose outside it), with the fields in EXACTLY this order:\n` +
-  `{\n` +
-  `  "analysis": "${ANALYSIS_DESC}",\n` +
-  `  "skipped": "${SKIPPED_DESC}",\n` +
-  `  "widgets": [ the widgets — as many as the goal contains, no more ],\n` +
-  `  "title": "short tab title, 24 chars max",\n` +
-  `  "domain": one of "fitness"|"study"|"writing"|"finance"|"work"|"habit"|"general"\n` +
-  `}`;
-
-const chatSystem = (ctx: AIContext) =>
-  `You are a calm, warm companion helping curate a personal tracking workspace. ${contextLine(ctx)} ` +
-  `Ask ONE short question at a time and propose up to 3 concrete widgets the user likely hasn't added (never duplicate an existing one). Keep replies brief and kind.\n\n` +
-  `Reply with ONLY a JSON object (no markdown fences) of this shape:\n` +
-  `{ "message": "your brief warm reply, ending with ONE question", "proposals": [ { "rationale": "one short line on why", "widget": <a widget> } ] }\n\n` +
-  WIDGET_SHAPES +
-  `\n\nSame rule: checklist items must be real, specific names — never "Item 1" / "First step".`;
-
-function contextLine(ctx: AIContext): string {
-  return `Goal: "${ctx.goal}" (topic: ${ctx.domain}). Existing widgets: ${ctx.existingTitles.join(", ") || "none"}.`;
-}
+// The Gemini request bodies live in geminiPayloads.ts, shared with the /api/ai
+// proxy so the personal-key path (Google directly) and the shared-key path
+// (through the proxy) send byte-identical requests — and the proxy never has to
+// trust a client-built payload.
 
 export class GeminiProvider implements AIProvider {
   private apiKey: string;
@@ -101,33 +48,35 @@ export class GeminiProvider implements AIProvider {
     this.model = model;
   }
 
-  /** With a personal key we call Google directly (their key, their quota). */
-  private callGoogle(body: object, timeoutMs: number): Promise<Response> {
+  /** With a personal key we call Google directly (their key, their quota), with
+   *  the full request body we built from the shared payload builders. */
+  private callGoogle(payload: object, timeoutMs: number): Promise<Response> {
     return fetch(`${ENDPOINT}/${this.model}:generateContent?key=${encodeURIComponent(this.apiKey)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify(payload),
       // Never hang forever: a stuck request would otherwise hold one of the
       // browser's ~6 per-host connections and quietly jam later calls.
       signal: AbortSignal.timeout(timeoutMs),
     });
   }
 
-  /** No personal key: go through Grove's own /api/ai, which holds the shared
-   *  key server-side. Requires a signed-in user (the proxy enforces it too). */
-  private async callProxy(body: object, timeoutMs: number): Promise<Response> {
+  /** No personal key: go through Grove's own /api/ai, which holds the shared key
+   *  server-side. We send only the OP and its args — never a Gemini body — so
+   *  the proxy builds and bounds the payload itself. Requires a signed-in user. */
+  private async callProxy(op: ProxyOp, timeoutMs: number): Promise<Response> {
     const token = (await supabase?.auth.getSession())?.data.session?.access_token;
     if (!token) throw new Error("sign in to use AI");
     return fetch("/api/ai", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ model: this.model, payload: body }),
+      body: JSON.stringify({ model: this.model, ...op }),
       signal: AbortSignal.timeout(timeoutMs),
     });
   }
 
-  private async attempt(body: object, timeoutMs: number): Promise<unknown> {
-    const res = this.apiKey ? await this.callGoogle(body, timeoutMs) : await this.callProxy(body, timeoutMs);
+  private async attempt(payload: object, op: ProxyOp, timeoutMs: number): Promise<unknown> {
+    const res = this.apiKey ? await this.callGoogle(payload, timeoutMs) : await this.callProxy(op, timeoutMs);
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
       // Grove's own proxy sets a STRING `code` at the top level. Google's
@@ -156,10 +105,14 @@ export class GeminiProvider implements AIProvider {
   // Neither will a missing server key — but that returns 503, and Google ALSO
   // returns a genuine transient 503 ("model is overloaded"), so gate on our
   // proxy's own string code rather than on the status alone.
-  private async call(body: object, opts?: { timeoutMs?: number; retry?: boolean }): Promise<unknown> {
+  private async call(
+    payload: object,
+    op: ProxyOp,
+    opts?: { timeoutMs?: number; retry?: boolean },
+  ): Promise<unknown> {
     const timeoutMs = opts?.timeoutMs ?? (this.apiKey ? 20_000 : 25_000);
     try {
-      return await this.attempt(body, timeoutMs);
+      return await this.attempt(payload, op, timeoutMs);
     } catch (e) {
       if (opts?.retry === false) throw e;
       const { status, code } = e as { status?: number; code?: string };
@@ -167,7 +120,7 @@ export class GeminiProvider implements AIProvider {
       const retryable = !permanent && (status === undefined || status === 429 || status >= 500);
       if (!retryable) throw e;
       await new Promise((r) => setTimeout(r, 600));
-      return this.attempt(body, timeoutMs);
+      return this.attempt(payload, op, timeoutMs);
     }
   }
 
@@ -179,33 +132,20 @@ export class GeminiProvider implements AIProvider {
     return text;
   }
 
-  /** Parse the model's JSON reply, tolerating stray ```json fences. */
+  /** Parse the model's JSON reply. Tolerates ```json fences on either side AND
+   *  a stray lone trailing fence the model sometimes appends (the old
+   *  starts-with-``` check missed that and the whole chat turn failed) by
+   *  slicing to the outermost {...}/[...] before parsing. */
   private static json<T>(data: unknown): T {
-    let t = GeminiProvider.text(data).trim();
-    if (t.startsWith("```")) t = t.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
-    return JSON.parse(t) as T;
+    const raw = GeminiProvider.text(data).trim();
+    const start = raw.search(/[[{]/);
+    const end = Math.max(raw.lastIndexOf("}"), raw.lastIndexOf("]"));
+    const body = start >= 0 && end > start ? raw.slice(start, end + 1) : raw;
+    return JSON.parse(body) as T;
   }
 
   async generateCustomWidget(description: string, ctx: AIContext): Promise<WidgetSpec> {
-    const data = await this.call({
-      contents: [
-        {
-          role: "user",
-          parts: [
-            {
-              text: `${contextLine(ctx)}\n\nBuild one tracker widget for: "${description}". Prefer a metric (value/target/unit) for anything tracked as a number. IMPORTANT: when the description implies a quantity or goal, you MUST fill "unit" (e.g. chapters, hrs, glasses, km) and "target" (the number to reach) — e.g. "read 14 chapters" → unit "chapters", target 14. Start "value" at 0 unless told otherwise.`,
-            },
-          ],
-        },
-      ],
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: WIDGET_SCHEMA,
-        // Gemini 3.x models "think" before answering; with a JSON schema that
-        // can run 30s+. LOW keeps a touch of reasoning at ~1s latency.
-        thinkingConfig: { thinkingLevel: "LOW" },
-      },
-    });
+    const data = await this.call(customWidgetPayload(description, ctx), { op: "custom", description, ctx });
     const spec = normalizeSpec(JSON.parse(GeminiProvider.text(data)));
     if (!spec) throw new Error("no widget returned");
     return spec;
@@ -213,19 +153,8 @@ export class GeminiProvider implements AIProvider {
 
   async curateWorkspace(goal: string): Promise<CurationResult> {
     const data = await this.call(
-      {
-        contents: [{ role: "user", parts: [{ text: curatePrompt(goal) }] }],
-        generationConfig: {
-          responseMimeType: "application/json",
-          // No responseSchema on purpose — see WIDGET_SHAPES note. thinkingLevel
-          // LOW keeps a touch of reasoning (subject knowledge) at ~2-3s latency.
-          thinkingConfig: { thinkingLevel: "LOW" },
-          // Pinned, not incidental: at temperature 0 this returns byte-identical
-          // widget sets across goals — the exact sameness this prompt exists to
-          // fix — and high values degenerate to metric+metric+metric.
-          temperature: 1.0,
-        },
-      },
+      curatePayload(goal),
+      { op: "curate", goal },
       // This call blocks the Begin button, so budget it hard and don't retry:
       // a retry can't finish inside the budget, and the old 25s + 600ms + 25s
       // path could block Begin for ~50s before silently revealing a template.
@@ -252,19 +181,7 @@ export class GeminiProvider implements AIProvider {
   }
 
   async curationChat(history: ChatMessage[], ctx: AIContext): Promise<CurationTurn> {
-    const contents =
-      history.length > 0
-        ? history.map((m) => ({ role: m.role === "ai" ? "model" : "user", parts: [{ text: m.text }] }))
-        : [{ role: "user", parts: [{ text: "Start the conversation." }] }];
-
-    const data = await this.call({
-      systemInstruction: { parts: [{ text: chatSystem(ctx) }] },
-      contents,
-      generationConfig: {
-        responseMimeType: "application/json",
-        thinkingConfig: { thinkingLevel: "LOW" },
-      },
-    });
+    const data = await this.call(chatPayload(history, ctx), { op: "chat", history, ctx });
 
     const out = GeminiProvider.json<{
       message: string;
