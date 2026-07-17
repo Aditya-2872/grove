@@ -14,7 +14,7 @@
 import type { WidgetSpec, Domain, ChatMessage, WidgetProposal } from "./types";
 import { ClaudeProvider } from "./claudeProvider";
 import { GeminiProvider } from "./geminiProvider";
-import { cloudEnabled } from "./supabase";
+import { cloudEnabled, hasSession } from "./supabase";
 
 export interface AIContext {
   goal: string;
@@ -293,8 +293,10 @@ export function getAI(): AIProvider {
     return realCache.provider;
   }
   // No personal key: use Grove's shared AI (an empty key routes through the
-  // server proxy). Only meaningful with an account, which cloud mode implies.
-  if (cloudEnabled) {
+  // server proxy). The proxy needs a Supabase token, so this is only for a
+  // signed-in user — a GUEST (cloudEnabled but no session) would just be
+  // rejected, so they fall to the offline mock (its templates are good).
+  if (cloudEnabled && hasSession()) {
     const geminiModels = PROVIDERS.gemini.models;
     const model =
       s.provider === "gemini" && geminiModels.some((m) => m.id === s.model) ? s.model : geminiModels[0].id;

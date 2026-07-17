@@ -37,10 +37,11 @@ import SettingsModal from "./components/SettingsModal";
 import ConfirmDialog from "./components/ConfirmDialog";
 import { Logo } from "./components/icons";
 
-function bootstrap(): AppState {
-  // Cloud mode starts empty — the signed-in user's workspaces load from the
-  // cloud (never another account's local leftovers on a shared device).
-  if (cloudEnabled) return { workspaces: [], activeId: "" };
+function bootstrap(willSyncCloud: boolean): AppState {
+  // A cloud-synced mount starts empty — the signed-in user's workspaces load
+  // from the cloud (never another account's local leftovers on a shared
+  // device). Local AND guest mounts restore this browser's saved work.
+  if (willSyncCloud) return { workspaces: [], activeId: "" };
   const loaded = loadState();
   if (loaded && loaded.workspaces.length) return loaded;
   return { workspaces: [], activeId: "" };
@@ -69,13 +70,14 @@ export default function App({
   isOldestProfile: boolean;
   onSwitchProfile?: () => void;
 }) {
-  const { user, signOut } = useAuth();
+  const { user, signOut, guest, exitGuest } = useAuth();
   const cloudScoped = cloudEnabled && !!user && !!profileId;
-  const [state, setState] = useState<AppState>(bootstrap);
+  const [state, setState] = useState<AppState>(() => bootstrap(cloudScoped));
   const [composing, setComposing] = useState<boolean>(() => state.workspaces.length === 0);
   const [composerPhase, setComposerPhase] = useState<"input" | "curating" | "exiting">("input");
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [cloudReady, setCloudReady] = useState(!cloudEnabled);
+  // A cloud-synced mount waits for the cloud load; local + guest are ready now.
+  const [cloudReady, setCloudReady] = useState(!cloudScoped);
   const [loadError, setLoadError] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [reloadNonce, setReloadNonce] = useState(0);
@@ -290,14 +292,16 @@ export default function App({
   }, [profileId, reloadNonce]);
 
   // --- persist everything ---
-  // Local mode: the single localStorage bucket. Cloud mode: debounced diff-sync
+  // Local mode AND guest mode: the single localStorage bucket (a guest is
+  // cloudEnabled but not cloud-scoped, and their work must survive here so it
+  // can migrate when they create an account). Cloud mode: debounced diff-sync
   // with optimistic concurrency.
   useEffect(() => {
-    if (!cloudEnabled) {
+    if (!cloudScoped) {
       saveState(state);
       return;
     }
-    if (!cloudScoped || !profileId || !cloudReady) return;
+    if (!cloudReady) return;
     const { changed, removed } = computeDiff(state.workspaces, lastSynced.current);
     if (changed.length === 0 && removed.length === 0) return;
     const t = window.setTimeout(() => {
@@ -682,6 +686,17 @@ export default function App({
               ? "Saved"
               : "Offline — your changes will sync when you reconnect"}
         </div>
+      )}
+
+      {/* Guest: a calm, persistent nudge to keep their work. Clicking returns to
+          the sign-in screen; their local grove migrates once they sign up. */}
+      {guest && (
+        <button
+          onClick={exitGuest}
+          className="pop-in glass fixed bottom-4 left-1/2 z-40 -translate-x-1/2 rounded-full px-4 py-1.5 text-xs text-muted-c transition hover:text-c"
+        >
+          Trying Grove as a guest — <span className="accent-text">create a free account</span> to keep it
+        </button>
       )}
 
       {active && (

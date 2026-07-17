@@ -38,9 +38,11 @@ const Loading = () => (
 );
 
 export default function ProfileGate() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, guest } = useAuth();
 
-  if (!cloudEnabled) return <App profileId={null} isOldestProfile={false} />;
+  // Local-only mode, or a guest trying Grove without an account: no cloud
+  // profiles — just the app, backed by this browser's storage.
+  if (!cloudEnabled || guest) return <App profileId={null} isOldestProfile={false} />;
   return <CloudProfileGate userId={user?.id} signOut={signOut} />;
 }
 

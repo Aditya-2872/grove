@@ -14,3 +14,13 @@ export const supabase: SupabaseClient | null =
 
 /** True when cloud accounts are configured (a .env.local with both values). */
 export const cloudEnabled = supabase !== null;
+
+// Whether a user is currently signed in. Kept in sync by AuthProvider so plain
+// (non-React) code — getAI() in particular — can tell a signed-in user from a
+// guest without an async getSession(): a guest has no token, so the shared AI
+// proxy would just reject them; they should fall to the offline mock instead.
+let _hasSession = false;
+export const setHasSession = (v: boolean) => {
+  _hasSession = v;
+};
+export const hasSession = () => _hasSession;

@@ -9,7 +9,7 @@ import { useAuth } from "../auth";
 import AuthScreen from "./AuthScreen";
 
 export default function AuthGate({ children }: { children: ReactNode }) {
-  const { session, loading } = useAuth();
+  const { session, loading, guest } = useAuth();
 
   if (!cloudEnabled) return <>{children}</>;
 
@@ -24,5 +24,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     );
   }
 
-  return session ? <>{children}</> : <AuthScreen />;
+  // A signed-in user OR a guest who chose to try it first both see the app;
+  // everyone else meets the sign-in screen.
+  return session || guest ? <>{children}</> : <AuthScreen />;
 }

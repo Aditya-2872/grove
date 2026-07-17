@@ -7,6 +7,7 @@
 
 import { useState } from "react";
 import { supabase } from "../supabase";
+import { useAuth } from "../auth";
 import WelcomeArt from "./WelcomeArt";
 import { Logo } from "./icons";
 
@@ -23,6 +24,7 @@ function friendly(message: string): string {
 }
 
 export default function AuthScreen() {
+  const { enterGuest } = useAuth();
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -123,6 +125,18 @@ export default function AuthScreen() {
           className="mt-5 text-xs text-muted-c transition hover:text-c"
         >
           {mode === "signin" ? "New here? Create an account" : "Have an account? Sign in"}
+        </button>
+
+        <div className="mt-6 flex items-center gap-3 text-[10px] tracking-wider text-muted-c/70 uppercase">
+          <span className="h-px flex-1 bg-white/8" />
+          or
+          <span className="h-px flex-1 bg-white/8" />
+        </div>
+        <button
+          onClick={enterGuest}
+          className="mt-4 text-sm text-c transition hover:brightness-125"
+        >
+          Just try it — no account needed →
         </button>
       </div>
     </div>
