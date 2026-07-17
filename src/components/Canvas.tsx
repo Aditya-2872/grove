@@ -7,6 +7,7 @@
 import { useRef, useState } from "react";
 import type { Widget, Scenery } from "../types";
 import { sizeOf } from "../generateWorkspace";
+import { useIsStacked } from "../hooks/useMediaQuery";
 import WidgetCard from "./WidgetCard";
 import SceneArt from "./SceneArt";
 import SceneryLayer from "./Scenery";
@@ -88,6 +89,7 @@ export default function Canvas({
 }) {
   const [guides, setGuides] = useState<{ v: number[]; h: number[] }>({ v: [], h: [] });
   const wrapRef = useRef<HTMLDivElement>(null);
+  const stacked = useIsStacked();
 
   /** Keep a widget wholly inside the canvas — the space is a page, not an
    *  endless plane, so a widget can never be pushed out of reach. */
@@ -142,8 +144,27 @@ export default function Canvas({
       <SceneryMenu scenery={scenery} onChange={onChangeScenery} />
 
       {widgets.length === 0 ? (
-        <div className="pointer-events-none flex h-full w-full items-center justify-center">
+        <div className="pointer-events-none flex h-full w-full items-center justify-center px-6 text-center">
           <p className="text-sm text-muted-c">A quiet space. Add a widget to begin.</p>
+        </div>
+      ) : stacked ? (
+        // Phones: a readable, scrollable column. Free placement needs a pointer
+        // and room; neither exists here, so we drop it rather than ship a
+        // canvas you can't actually use.
+        <div className="relative z-[1] flex flex-col gap-4 px-4 pt-16 pb-52">
+          {widgets.map((wd, i) => (
+            <WidgetCard
+              key={wd.id}
+              widget={wd}
+              index={i}
+              stacked
+              onChange={onChange}
+              onMove={handleMove}
+              onMoveEnd={clearGuides}
+              onResize={handleResize}
+              onDelete={onDelete}
+            />
+          ))}
         </div>
       ) : (
         widgets.map((wd, i) => (

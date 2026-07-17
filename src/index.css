@@ -302,6 +302,15 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   z-index: 1;
 }
 
+/* Controls that normally appear on hover (delete, close, remove) must be
+   permanently visible where there IS no hover — otherwise they're unreachable
+   on a touchscreen. */
+@media (hover: none) {
+  .touch-visible {
+    opacity: 1 !important;
+  }
+}
+
 /* --- 3D hover tilt (vars written per-frame by useTilt; CSS eases them) --- */
 .tilt {
   transform: perspective(var(--tp, 900px)) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) scale(var(--tz, 1));

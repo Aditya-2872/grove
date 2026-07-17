@@ -10,12 +10,16 @@
 // ---------------------------------------------------------------------------
 
 import { useEffect, useRef } from "react";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 
 const RADIUS = 128; // reveal radius, CSS px
 const FADE = 0.06; // per-frame trail fade (higher = shorter trail)
 const BASE_ALPHA = 0.9; // overlay opacity at rest (lower = scene more visible)
-const reduced =
-  typeof window !== "undefined" ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+// On touch there IS no cursor, so a reveal-trail would leave the scene hidden
+// forever; show it softly instead (and a touch more of it, since it can't be
+// unveiled). Same for anyone who asked for reduced motion.
+const STATIC_ALPHA = 0.84;
+const STATIC_QUERY = "(prefers-reduced-motion: reduce), (pointer: coarse)";
 
 function hexToRgb(hex: string): [number, number, number] {
   const h = hex.trim().replace("#", "");
@@ -25,9 +29,10 @@ function hexToRgb(hex: string): [number, number, number] {
 
 export default function RevealTrail() {
   const ref = useRef<HTMLCanvasElement | null>(null);
+  const isStatic = useMediaQuery(STATIC_QUERY);
 
   useEffect(() => {
-    if (reduced?.matches) return;
+    if (isStatic) return;
     const canvas = ref.current;
     const parent = canvas?.parentElement;
     if (!canvas || !parent) return;
@@ -88,16 +93,20 @@ export default function RevealTrail() {
       inside = x >= 0 && y >= 0 && x <= r.width && y <= r.height;
       px = x;
       py = y;
+      if (inside) kick();
     };
     const onLeave = () => {
       inside = false;
     };
+    const onVisibility = () => kick(); // repaint once after returning to the tab
     window.addEventListener("pointermove", onMove, { passive: true });
     window.addEventListener("pointerleave", onLeave);
+    document.addEventListener("visibilitychange", onVisibility);
 
     let raf = 0;
+    let idle = 0; // frames since the pointer was last over the canvas
     function frame() {
-      raf = requestAnimationFrame(frame);
+      raf = 0;
       if ((bgTick = (bgTick + 1) % 20) === 0) refreshBg();
 
       // fade the accumulated trail
@@ -129,7 +138,17 @@ export default function RevealTrail() {
       ctx!.fillRect(0, 0, W, H);
       ctx!.globalCompositeOperation = "destination-out";
       ctx!.drawImage(mask, 0, 0, W, H);
+
+      // Idle-stop: once the pointer has left and the trail has faded out there
+      // is nothing left to draw, so stop scheduling. Re-animating a static frame
+      // forever would re-blur every glass panel behind it ~60x/sec and cook the
+      // battery. onMove()/visibility kick it back to life.
+      idle = inside ? 0 : idle + 1;
+      if (!document.hidden && idle < 90) raf = requestAnimationFrame(frame);
     }
+    const kick = () => {
+      if (!raf && !document.hidden) raf = requestAnimationFrame(frame);
+    };
     frame();
 
     return () => {
@@ -137,14 +156,15 @@ export default function RevealTrail() {
       ro.disconnect();
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerleave", onLeave);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, []);
+  }, [isStatic]);
 
-  if (reduced?.matches) {
+  if (isStatic) {
     return (
       <div
         className="pointer-events-none absolute inset-0"
-        style={{ background: "var(--bg)", opacity: BASE_ALPHA }}
+        style={{ background: "var(--bg)", opacity: STATIC_ALPHA }}
       />
     );
   }

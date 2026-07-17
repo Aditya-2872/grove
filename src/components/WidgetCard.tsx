@@ -29,6 +29,7 @@ const RADIUS = "26px";
 export default function WidgetCard({
   widget,
   index,
+  stacked = false,
   onChange,
   onMove,
   onMoveEnd,
@@ -37,6 +38,9 @@ export default function WidgetCard({
 }: {
   widget: Widget;
   index: number;
+  /** Phone layout: the card flows full-width in a column instead of being
+   *  free-placed, so there's nothing to drag or resize. */
+  stacked?: boolean;
   onChange: (updated: Widget) => void;
   onMove: (id: string, x: number, y: number) => void;
   onMoveEnd: () => void;
@@ -106,18 +110,22 @@ export default function WidgetCard({
 
   return (
     <div
-      className="smoke-in absolute"
-      style={{
-        left: widget.x,
-        top: widget.y,
-        width: w,
-        height: h,
-        zIndex: moving ? 3 : 1,
-        animationDelay: `${Math.min(index * 0.08, 0.6)}s`,
-        transition: moving
-          ? "none"
-          : "left 0.32s cubic-bezier(0.22, 1, 0.36, 1), top 0.32s cubic-bezier(0.22, 1, 0.36, 1)",
-      }}
+      className={stacked ? "smoke-in relative w-full" : "smoke-in absolute"}
+      style={
+        stacked
+          ? { minHeight: h, animationDelay: `${Math.min(index * 0.08, 0.6)}s` }
+          : {
+              left: widget.x,
+              top: widget.y,
+              width: w,
+              height: h,
+              zIndex: moving ? 3 : 1,
+              animationDelay: `${Math.min(index * 0.08, 0.6)}s`,
+              transition: moving
+                ? "none"
+                : "left 0.32s cubic-bezier(0.22, 1, 0.36, 1), top 0.32s cubic-bezier(0.22, 1, 0.36, 1)",
+            }
+      }
     >
       <div
         ref={tiltRef}
@@ -126,10 +134,12 @@ export default function WidgetCard({
       >
       {/* header / drag handle */}
       <div
-        onPointerDown={onHeaderDown}
-        onPointerMove={onHeaderMove}
-        onPointerUp={onHeaderUp}
-        className="flex cursor-grab touch-none items-center justify-between px-4 pt-3 pb-1.5 active:cursor-grabbing"
+        onPointerDown={stacked ? undefined : onHeaderDown}
+        onPointerMove={stacked ? undefined : onHeaderMove}
+        onPointerUp={stacked ? undefined : onHeaderUp}
+        className={`flex touch-none items-center justify-between px-4 pt-3 pb-1.5 ${
+          stacked ? "" : "cursor-grab active:cursor-grabbing"
+        }`}
       >
         {editingTitle ? (
           <input
@@ -153,7 +163,7 @@ export default function WidgetCard({
         <button
           onPointerDown={(e) => e.stopPropagation()}
           onClick={() => onDelete(widget.id)}
-          className="ml-2 text-muted-c opacity-0 transition hover:text-c group-hover/card:opacity-100"
+          className="touch-visible ml-2 text-muted-c opacity-0 transition hover:text-c group-hover/card:opacity-100"
           title="Delete widget"
         >
           <IconClose className="h-3.5 w-3.5" />
@@ -172,18 +182,20 @@ export default function WidgetCard({
         {widget.type === "habit" && <HabitView widget={widget} onChange={onChange} />}
       </div>
 
-      {/* resize grip */}
-      <div
-        onPointerDown={onGripDown}
-        onPointerMove={onGripMove}
-        onPointerUp={onGripUp}
-        className="absolute right-0.5 bottom-0.5 h-4 w-4 cursor-nwse-resize touch-none opacity-0 transition group-hover/card:opacity-100"
-        title="Resize"
-      >
-        <svg viewBox="0 0 10 10" className="h-full w-full text-muted-c">
-          <path d="M9 3 L3 9 M9 6 L6 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-        </svg>
-      </div>
+      {/* resize grip — pointless in the stacked column, where cards are full-width */}
+      {!stacked && (
+        <div
+          onPointerDown={onGripDown}
+          onPointerMove={onGripMove}
+          onPointerUp={onGripUp}
+          className="absolute right-0.5 bottom-0.5 h-4 w-4 cursor-nwse-resize touch-none opacity-0 transition group-hover/card:opacity-100"
+          title="Resize"
+        >
+          <svg viewBox="0 0 10 10" className="h-full w-full text-muted-c">
+            <path d="M9 3 L3 9 M9 6 L6 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+          </svg>
+        </div>
+      )}
       </div>
     </div>
   );
