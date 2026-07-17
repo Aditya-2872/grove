@@ -1,10 +1,10 @@
 // ---------------------------------------------------------------------------
 // The swappable AI layer.
 //
-// Everything that "uses AI" goes through getAI() -> an AIProvider. Today the
-// only provider is a smart, keyless MockProvider (offline heuristics). When the
-// user adds a Claude API key (a later slice), getAI() will return a real
-// provider with the SAME interface — nothing else in the app changes.
+// Everything that "uses AI" goes through getAI() -> an AIProvider. Signed-in
+// users get Grove's shared AI for free (routed through the /api/ai server proxy
+// that holds the key); anyone can paste their OWN Gemini/Claude key to use their
+// own quota instead; with neither, a smart offline MockProvider takes over.
 //
 // A provider only ever returns a WidgetSpec (data). That spec is ALWAYS passed
 // through specToWidget() (the clamping trust boundary in generateWorkspace.ts)
@@ -14,6 +14,7 @@
 import type { WidgetSpec, Domain, ChatMessage, WidgetProposal } from "./types";
 import { ClaudeProvider } from "./claudeProvider";
 import { GeminiProvider } from "./geminiProvider";
+import { cloudEnabled } from "./supabase";
 
 export interface AIContext {
   goal: string;
@@ -238,7 +239,7 @@ export interface AISettings {
 }
 
 const SETTINGS_KEY = "aditya.ai.settings.v1";
-const DEFAULT_SETTINGS: AISettings = { provider: "gemini", apiKey: "", model: "gemini-2.0-flash" };
+const DEFAULT_SETTINGS: AISettings = { provider: "gemini", apiKey: "", model: "gemini-flash-lite-latest" };
 
 export function loadSettings(): AISettings {
   try {
@@ -272,11 +273,15 @@ export function hasKey(): boolean {
 
 let mockProvider: MockProvider | null = null;
 let realCache: { key: string; provider: AIProvider } | null = null;
+let sharedCache: { model: string; provider: AIProvider } | null = null;
 
 /**
- * The active provider: the user's real AI (Gemini or Claude) when a key is set,
- * otherwise the smart offline mock. Reads settings fresh each call, so entering
- * or clearing a key takes effect immediately.
+ * The active provider, in order of preference:
+ *   1. the user's OWN key (Gemini or Claude) — their quota, unlimited by us
+ *   2. Grove's shared AI via the /api/ai proxy — no key needed, just an account
+ *   3. the smart offline mock — local-only mode, or if the proxy is unreachable
+ * Reads settings fresh each call, so entering or clearing a key takes effect
+ * immediately.
  */
 export function getAI(): AIProvider {
   const s = loadSettings();
@@ -289,6 +294,17 @@ export function getAI(): AIProvider {
       realCache = { key: cacheKey, provider };
     }
     return realCache.provider;
+  }
+  // No personal key: use Grove's shared AI (an empty key routes through the
+  // server proxy). Only meaningful with an account, which cloud mode implies.
+  if (cloudEnabled) {
+    const geminiModels = PROVIDERS.gemini.models;
+    const model =
+      s.provider === "gemini" && geminiModels.some((m) => m.id === s.model) ? s.model : geminiModels[0].id;
+    if (!sharedCache || sharedCache.model !== model) {
+      sharedCache = { model, provider: new GeminiProvider("", model) };
+    }
+    return sharedCache.provider;
   }
   if (!mockProvider) mockProvider = new MockProvider();
   return mockProvider;

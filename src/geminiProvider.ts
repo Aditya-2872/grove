@@ -11,6 +11,7 @@
 
 import type { WidgetSpec, ChatMessage, Domain } from "./types";
 import type { AIProvider, AIContext, CurationTurn, CurationResult } from "./ai";
+import { supabase } from "./supabase";
 
 const rid = () => crypto.randomUUID();
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
@@ -94,8 +95,9 @@ export class GeminiProvider implements AIProvider {
     this.model = model;
   }
 
-  private async attempt(body: object): Promise<unknown> {
-    const res = await fetch(`${ENDPOINT}/${this.model}:generateContent?key=${encodeURIComponent(this.apiKey)}`, {
+  /** With a personal key we call Google directly (their key, their quota). */
+  private callGoogle(body: object): Promise<Response> {
+    return fetch(`${ENDPOINT}/${this.model}:generateContent?key=${encodeURIComponent(this.apiKey)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -103,6 +105,23 @@ export class GeminiProvider implements AIProvider {
       // browser's ~6 per-host connections and quietly jam later calls.
       signal: AbortSignal.timeout(20_000),
     });
+  }
+
+  /** No personal key: go through Grove's own /api/ai, which holds the shared
+   *  key server-side. Requires a signed-in user (the proxy enforces it too). */
+  private async callProxy(body: object): Promise<Response> {
+    const token = (await supabase?.auth.getSession())?.data.session?.access_token;
+    if (!token) throw new Error("sign in to use AI");
+    return fetch("/api/ai", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ model: this.model, payload: body }),
+      signal: AbortSignal.timeout(25_000),
+    });
+  }
+
+  private async attempt(body: object): Promise<unknown> {
+    const res = this.apiKey ? await this.callGoogle(body) : await this.callProxy(body);
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
       const err = new Error(`Gemini ${res.status}: ${detail.slice(0, 200)}`) as Error & { status?: number };

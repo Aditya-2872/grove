@@ -112,7 +112,9 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* key */}
-        <label className="mb-1 block text-xs text-muted-c">{info.label} API key</label>
+        <label className="mb-1 block text-xs text-muted-c">
+          {info.label} API key <span className="opacity-70">— optional</span>
+        </label>
         <input
           type="password"
           value={apiKey}
@@ -121,8 +123,9 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
           className="surface-soft w-full rounded-lg px-3 py-2 text-sm text-c placeholder:text-muted-c outline-none"
         />
         <p className="mt-1.5 text-[11px] leading-relaxed text-muted-c">
-          {info.keyHint} Stored only in this browser and sent straight to the provider — fine for personal
-          use, not a public launch, and never commit it to code. Get one at{" "}
+          Grove's AI already works — you don't need a key. Add your own only if you'd rather use your own
+          quota (or a different model); it's stored just in this browser and sent straight to the provider.
+          Get one at{" "}
           <a href={info.keyUrl} target="_blank" rel="noreferrer" className="accent-text underline">
             {info.keyUrl.replace("https://", "")}
           </a>
@@ -150,7 +153,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="mt-5 flex items-center justify-between">
-          <span className="text-xs text-muted-c">{on ? "Real AI on" : "Smart offline mode"}</span>
+          <span className="text-xs text-muted-c">{on ? "Using your own key" : "Using Grove's AI"}</span>
           <div className="flex gap-2">
             {initial.apiKey && (
               <button
