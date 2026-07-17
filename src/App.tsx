@@ -15,6 +15,7 @@ import {
 } from "./generateWorkspace";
 import { getAI, getMock } from "./ai";
 import { loadState, saveState, migrateMetricPeriods, type AppState } from "./storage";
+import { reconcileFetched, type SyncBase } from "./syncReconcile";
 import { cloudEnabled } from "./supabase";
 import { useAuth } from "./auth";
 import {
@@ -47,7 +48,6 @@ function bootstrap(): AppState {
 
 // The sync base: per workspace, the JSON we last synced + the row's cloud
 // updated_at (used for optimistic-concurrency writes).
-type SyncBase = Map<string, { json: string; updatedAt: string }>;
 type SaveStatus = "idle" | "saving" | "saved" | "offline";
 
 function computeDiff(workspaces: Workspace[], base: SyncBase) {
@@ -194,39 +194,32 @@ export default function App({
     if (removed.length) deleteWorkspaces(removed, pid).catch(() => {});
   }
 
-  // Pull the latest on tab-focus; adopt cloud rows we haven't locally edited, and
-  // any workspaces created on another device.
+  // Pull the latest on tab-focus; adopt cloud rows we haven't locally edited,
+  // pick up workspaces created on another device, and DROP ones deleted on
+  // another device (so a stale local copy can't be blind-flushed back on
+  // pagehide — that's how a deleted goal used to resurrect itself).
   async function refetch(pid: string): Promise<void> {
+    // A sync mid-write leaves `base` and the cloud momentarily inconsistent —
+    // reconciling against that could drop a row that's actually just being
+    // inserted. Skip; refetch runs again on the next focus.
+    if (syncing.current) return;
     try {
       const cloud = await fetchWorkspaces(pid);
-      const base = lastSynced.current;
-      const s = stateRef.current;
-      const byId = new Map(cloud.map((r) => [r.data.id, r]));
-      const localIds = new Set(s.workspaces.map((w) => w.id));
-      const nextBase = new Map(base);
-      let changed = false;
-      const merged = s.workspaces.map((w) => {
-        const c = byId.get(w.id);
-        if (!c) return w;
-        const b = base.get(w.id);
-        const notDiverged = b && b.json === JSON.stringify(w);
-        if (notDiverged && c.updatedAt !== b!.updatedAt) {
-          changed = true;
-          nextBase.set(w.id, { json: JSON.stringify(c.data), updatedAt: c.updatedAt });
-          return c.data;
-        }
-        return w;
-      });
-      const added = cloud
-        .filter((r) => !localIds.has(r.data.id))
-        .map((r) => ({ ...r, data: migrateMetricPeriods(r.data) }));
-      added.forEach((r) => {
-        nextBase.set(r.data.id, { json: JSON.stringify(r.data), updatedAt: r.updatedAt });
-        changed = true;
-      });
+      const { workspaces, nextBase, changed } = reconcileFetched(
+        cloud,
+        lastSynced.current,
+        stateRef.current.workspaces,
+      );
       if (!changed) return;
       lastSynced.current = nextBase;
-      setState((cur) => ({ ...cur, workspaces: [...merged, ...added.map((r) => r.data)] }));
+      setState((cur) => {
+        // If the active tab was the one just deleted elsewhere, fall back to the
+        // last remaining tab rather than leaving activeId dangling on nothing.
+        const activeId = workspaces.some((w) => w.id === cur.activeId)
+          ? cur.activeId
+          : workspaces[workspaces.length - 1]?.id ?? "";
+        return { ...cur, workspaces, activeId };
+      });
     } catch {
       /* offline — will retry on the next focus */
     }
