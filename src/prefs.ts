@@ -41,6 +41,11 @@ export interface Alarm {
   time: string; // "HH:MM" (24h)
   armed: boolean;
   label: string;
+  /** Absolute epoch ms the alarm should fire — the next occurrence of `time`.
+   *  Set when armed. Firing off this instead of matching the current minute
+   *  means a throttled/asleep tab that skips the target minute still fires on
+   *  its next tick or when it wakes, rather than missing the alarm forever. */
+  firesAt?: number;
 }
 
 export function loadAlarm(): Alarm {
@@ -49,7 +54,12 @@ export function loadAlarm(): Alarm {
     if (raw) {
       const a = JSON.parse(raw) as Partial<Alarm>;
       if (typeof a.time === "string" && /^\d{2}:\d{2}$/.test(a.time)) {
-        return { time: a.time, armed: !!a.armed, label: typeof a.label === "string" ? a.label : "" };
+        return {
+          time: a.time,
+          armed: !!a.armed,
+          label: typeof a.label === "string" ? a.label : "",
+          firesAt: typeof a.firesAt === "number" ? a.firesAt : undefined,
+        };
       }
     }
   } catch {

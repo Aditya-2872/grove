@@ -15,36 +15,67 @@ const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const pad = (n: number) => String(n).padStart(2, "0");
 
+// A web alarm can only ring while the tab is open. If it was skipped because the
+// tab was frozen/asleep through the target minute, fire it when we next look —
+// but only if it's still recent enough to be useful; a wall-clock alarm that's
+// hours stale (laptop was shut) should quietly lapse, not blare on reopen.
+const GRACE_MS = 30 * 60 * 1000;
+
+/** Epoch ms of the next time local wall-clock reads "HH:MM" (today, else tomorrow). */
+function nextOccurrence(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1);
+  return d.getTime();
+}
+
 export default function ClockBar() {
   const [now, setNow] = useState(() => new Date());
   const [open, setOpen] = useState(false);
   const render = useAnimatedOpen(open);
   const [alarm, setAlarm] = useState<Alarm>(loadAlarm);
   const [ringing, setRinging] = useState(false);
-  const firedRef = useRef("");
-
-  // tick every second (only this component re-renders)
-  useEffect(() => {
-    const t = window.setInterval(() => setNow(new Date()), 1000);
-    return () => window.clearInterval(t);
-  }, []);
-
-  // fire once when the armed minute arrives
-  useEffect(() => {
-    if (!alarm.armed) return;
-    const hm = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
-    const key = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}T${alarm.time}`;
-    if (hm === alarm.time && firedRef.current !== key) {
-      firedRef.current = key;
-      setRinging(true);
-      notifyAlarm(alarm.label);
-    }
-  }, [now, alarm]);
+  // The firesAt value already handled, so a ringing alarm doesn't re-fire every
+  // tick (a fresh firesAt from re-arm/snooze fires again).
+  const firedRef = useRef<number | undefined>(undefined);
 
   const update = (a: Alarm) => {
     setAlarm(a);
     saveAlarm(a);
   };
+
+  // tick every second for the clock display; also re-check the instant the tab
+  // is refocused, so an alarm skipped while the tab slept fires on wake instead
+  // of waiting up to the next throttled tick.
+  useEffect(() => {
+    const tick = () => setNow(new Date());
+    const t = window.setInterval(tick, 1000);
+    document.addEventListener("visibilitychange", tick);
+    window.addEventListener("focus", tick);
+    return () => {
+      window.clearInterval(t);
+      document.removeEventListener("visibilitychange", tick);
+      window.removeEventListener("focus", tick);
+    };
+  }, []);
+
+  // Fire when wall-clock crosses the target (not when a tick lands inside the
+  // target minute — that's what a frozen tab silently missed).
+  useEffect(() => {
+    if (!alarm.armed || !alarm.firesAt || firedRef.current === alarm.firesAt) return;
+    const late = Date.now() - alarm.firesAt;
+    if (late < 0) return; // not due yet
+    firedRef.current = alarm.firesAt;
+    if (late <= GRACE_MS) {
+      setRinging(true);
+      notifyAlarm(alarm.label);
+    } else {
+      // Missed by too long to be useful (tab was asleep for ages) — lapse it.
+      update({ ...alarm, armed: false, firesAt: undefined });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [now, alarm]);
 
   const time = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
   const dateStr = `${DAYS[now.getDay()]} · ${now.getDate()} ${MONTHS[now.getMonth()]}`;
@@ -77,7 +108,11 @@ export default function ClockBar() {
             <input
               type="time"
               value={alarm.time}
-              onChange={(e) => update({ ...alarm, time: e.target.value })}
+              onChange={(e) => {
+                const time = e.target.value;
+                // Keep firesAt in step if they retime an already-armed alarm.
+                update({ ...alarm, time, firesAt: alarm.armed ? nextOccurrence(time) : alarm.firesAt });
+              }}
               className="surface-soft mb-2 w-full rounded-lg px-3 py-2 text-sm text-c outline-none"
             />
             <input
@@ -90,9 +125,10 @@ export default function ClockBar() {
             />
             <button
               onClick={() => {
-                if (!alarm.armed) requestNotifyPermission();
-                firedRef.current = "";
-                update({ ...alarm, armed: !alarm.armed });
+                const arming = !alarm.armed;
+                if (arming) requestNotifyPermission();
+                firedRef.current = undefined;
+                update({ ...alarm, armed: arming, firesAt: arming ? nextOccurrence(alarm.time) : undefined });
                 setOpen(false);
               }}
               className={`w-full rounded-lg py-2 text-sm transition ${
@@ -114,10 +150,16 @@ export default function ClockBar() {
             <div className="flex gap-2">
               <button
                 onClick={() => {
-                  // snooze 9 minutes
-                  const t = new Date(now.getTime() + 9 * 60 * 1000);
-                  firedRef.current = "";
-                  update({ ...alarm, time: `${pad(t.getHours())}:${pad(t.getMinutes())}`, armed: true });
+                  // snooze 9 minutes — a precise offset from now, not a re-parsed
+                  // "HH:MM", so it lands exactly 9 min out.
+                  const t = new Date(Date.now() + 9 * 60 * 1000);
+                  firedRef.current = undefined;
+                  update({
+                    ...alarm,
+                    time: `${pad(t.getHours())}:${pad(t.getMinutes())}`,
+                    armed: true,
+                    firesAt: t.getTime(),
+                  });
                   setRinging(false);
                 }}
                 className="surface flex-1 rounded-lg py-2 text-sm text-c transition hover:brightness-125"
@@ -126,7 +168,7 @@ export default function ClockBar() {
               </button>
               <button
                 onClick={() => {
-                  update({ ...alarm, armed: false });
+                  update({ ...alarm, armed: false, firesAt: undefined });
                   setRinging(false);
                 }}
                 className="flex-1 rounded-lg py-2 text-sm font-medium text-[#0a0d0b] transition hover:brightness-110"
