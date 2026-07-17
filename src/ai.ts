@@ -89,42 +89,44 @@ const ci = (text: string) => ({ id: rid(), text, done: false });
 
 type Idea = { spec: WidgetSpec; rationale: string };
 
+// Same rules the real curation prompt enforces: a streak is a habit (a counter
+// renders neither its unit nor its target), a checklist is only for one-time
+// things you can NAME, and no widget exists just to fill space.
 const CURATION_IDEAS: Record<Domain, Idea[]> = {
   fitness: [
     { spec: { type: "metric", title: "Sleep", value: 0, unit: "hrs", target: 8 }, rationale: "Recovery drives progress as much as training." },
     { spec: { type: "metric", title: "Body weight", value: 0, unit: "kg" }, rationale: "A weekly weigh-in shows the real trend." },
     { spec: { type: "metric", title: "Steps", value: 0, unit: "steps", target: 8000 }, rationale: "Movement outside the gym quietly adds up." },
-    { spec: { type: "checklist", title: "Meal prep", items: [ci("Plan meals"), ci("Shop"), ci("Cook a batch")] }, rationale: "Prepping ahead is where most plans succeed." },
+    { spec: { type: "metric", title: "Home-cooked meals", value: 0, unit: "meals", target: 5 }, rationale: "Most plans are won or lost in the kitchen." },
   ],
   study: [
     { spec: { type: "timer", title: "Pomodoro", durationSeconds: 25 * 60 }, rationale: "Short focused blocks beat long unfocused ones." },
-    { spec: { type: "metric", title: "Practice questions", value: 0, unit: "", target: 20 }, rationale: "Active recall sticks; passive reading doesn't." },
-    { spec: { type: "counter", title: "Revision streak", value: 0, unit: "days" }, rationale: "A visible streak is quietly motivating." },
+    { spec: { type: "metric", title: "Practice questions", value: 0, unit: "questions", target: 20 }, rationale: "Active recall sticks; passive reading doesn't." },
+    { spec: { type: "habit", title: "Revise something today" }, rationale: "A visible chain is quietly motivating." },
   ],
   writing: [
     { spec: { type: "metric", title: "Words today", value: 0, unit: "words", target: 500 }, rationale: "A small daily count compounds fast." },
-    { spec: { type: "counter", title: "Writing streak", value: 0, unit: "days" }, rationale: "Momentum matters more than mood." },
-    { spec: { type: "checklist", title: "Outline", items: [ci("Beginning"), ci("Middle"), ci("End")] }, rationale: "An outline unblocks the blank page." },
+    { spec: { type: "metric", title: "Total words", value: 0, unit: "words" }, rationale: "Watch the manuscript grow, with no finish line to fake." },
+    { spec: { type: "habit", title: "Write every day" }, rationale: "Momentum matters more than mood." },
   ],
   finance: [
     { spec: { type: "metric", title: "Savings", value: 0, unit: "$", target: 1000 }, rationale: "Name the number you're saving toward." },
-    { spec: { type: "counter", title: "No-spend days", value: 0, unit: "days" }, rationale: "A gentle game that adds up." },
-    { spec: { type: "checklist", title: "Cancel subscriptions", items: [ci("List them"), ci("Cancel the unused")] }, rationale: "Recurring charges are the quiet leak." },
+    { spec: { type: "metric", title: "Spent this month", value: 0, unit: "$" }, rationale: "The number that decides the other one." },
+    { spec: { type: "checklist", title: "Cancel subscriptions", items: [ci("List every recurring charge"), ci("Cancel the unused")] }, rationale: "Recurring charges are the quiet leak." },
   ],
   work: [
     { spec: { type: "metric", title: "Hours logged", value: 0, unit: "hrs" }, rationale: "Track time to protect it." },
     { spec: { type: "timer", title: "Deep work", durationSeconds: 50 * 60 }, rationale: "Guard one long focused block a day." },
-    { spec: { type: "checklist", title: "Deliverables", items: [ci("Draft"), ci("Review"), ci("Ship")] }, rationale: "Make 'done' visible." },
+    { spec: { type: "checklist", title: "Deliverables", items: [ci("First draft"), ci("Client review"), ci("Handoff & invoice")] }, rationale: "Make 'done' visible." },
   ],
   habit: [
-    { spec: { type: "counter", title: "Current streak", value: 0, unit: "days" }, rationale: "The chain is its own reward." },
+    { spec: { type: "habit", title: "Daily check-in" }, rationale: "The chain is its own reward." },
     { spec: { type: "timer", title: "Session", durationSeconds: 10 * 60 }, rationale: "Small and daily beats big and rare." },
-    { spec: { type: "metric", title: "Weekly goal", value: 0, unit: "", target: 5 }, rationale: "Aim for a weekly count, not perfection." },
+    { spec: { type: "metric", title: "Weekly check-ins", value: 0, unit: "check-ins", target: 5 }, rationale: "Aim for a weekly count, not perfection." },
   ],
   general: [
-    { spec: { type: "metric", title: "Progress", value: 0, unit: "", target: 100 }, rationale: "Pick one number that means progress." },
-    { spec: { type: "counter", title: "Streak", value: 0, unit: "days" }, rationale: "Consistency you can see." },
-    { spec: { type: "checklist", title: "Next moves", items: [ci("Get started"), ci("Keep going")] }, rationale: "Break it into first moves." },
+    { spec: { type: "habit", title: "Work on it today" }, rationale: "Consistency you can see." },
+    { spec: { type: "timer", title: "Focus session", durationSeconds: 25 * 60 }, rationale: "One protected block beats a vague intention." },
   ],
 };
 
@@ -149,15 +151,10 @@ class MockProvider implements AIProvider {
       return { type: "timer", title, durationSeconds: mins * 60 };
     }
     if (/checklist|to-?do|tasks?\b|steps|routine|packing|grocery|shopping|list/.test(d)) {
-      return {
-        type: "checklist",
-        title,
-        items: [
-          { id: rid(), text: "Get started", done: false },
-          { id: rid(), text: "Keep going", done: false },
-          { id: rid(), text: "Almost there", done: false },
-        ],
-      };
+      // Offline, we don't know this list's real rows — and inventing "Get
+      // started / Keep going" is exactly the placeholder junk that makes a
+      // space feel canned. An empty list the user fills is more honest.
+      return { type: "checklist", title, items: [] };
     }
     if (/\bnote\b|journal|idea|thought|remind|scratch/.test(d)) {
       return { type: "sticky_note", title, content: "", color: "#242c22" };

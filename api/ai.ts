@@ -30,7 +30,10 @@ export default async function handler(req: Request): Promise<Response> {
   const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const supabaseAnon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
   if (!key || !supabaseUrl || !supabaseAnon) {
-    return json({ error: "AI isn't configured on the server yet." }, 503);
+    // A machine-readable code: this 503 is PERMANENT until someone sets the env
+    // var, unlike Google's transient "model is overloaded" 503. The client
+    // retries one and not the other.
+    return json({ error: "AI isn't configured on the server yet.", code: "ai_not_configured" }, 503);
   }
 
   // --- gate: must be a signed-in Grove user ---
@@ -65,6 +68,6 @@ export default async function handler(req: Request): Promise<Response> {
       headers: { "Content-Type": "application/json" },
     });
   } catch {
-    return json({ error: "The AI took too long to answer." }, 504);
+    return json({ error: "The AI took too long to answer.", code: "upstream_timeout" }, 504);
   }
 }

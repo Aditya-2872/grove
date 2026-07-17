@@ -12,6 +12,7 @@
 import type { WidgetSpec, ChatMessage, Domain } from "./types";
 import type { AIProvider, AIContext, CurationTurn, CurationResult } from "./ai";
 import { supabase } from "./supabase";
+import { curationBody, WIDGET_SHAPES, ANALYSIS_DESC, SKIPPED_DESC } from "./curationPrompt";
 
 const rid = () => crypto.randomUUID();
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
@@ -20,13 +21,18 @@ const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 const WIDGET_SCHEMA = {
   type: "OBJECT",
   properties: {
-    type: { type: "STRING", enum: ["metric", "checklist", "counter", "timer", "progress", "sticky_note", "habit"] },
+    type: {
+      type: "STRING",
+      enum: ["metric", "checklist", "counter", "timer", "progress", "sticky_note", "habit", "bmi"],
+    },
     title: { type: "STRING", description: "Short title, ≤40 chars" },
     value: { type: "NUMBER", description: "starting value (metric/counter/progress)" },
-    unit: { type: "STRING", description: "e.g. hrs, glasses, km, $ (metric/counter)" },
-    target: { type: "NUMBER", description: "goal (metric/counter)" },
+    unit: { type: "STRING", description: "e.g. hrs, glasses, km, $ (metric only — a counter renders no unit)" },
+    target: { type: "NUMBER", description: "the real finish line (metric only; omit for a level with no finish line)" },
     durationSeconds: { type: "NUMBER", description: "length in seconds (timer)" },
     content: { type: "STRING", description: "note body (sticky_note)" },
+    heightCm: { type: "NUMBER", description: "height in cm (bmi)" },
+    weightKg: { type: "NUMBER", description: "weight in kg (bmi)" },
     // Plain strings, not nested objects: deeply-nested schemas can wedge the
     // model's constrained decoding (observed live: nested items -> 30s+ hangs).
     items: { type: "ARRAY", description: "row labels (checklist)", items: { type: "STRING" } },
@@ -34,9 +40,13 @@ const WIDGET_SCHEMA = {
   required: ["type", "title"],
 };
 
-/** Normalize the wire shape (checklist rows arrive as strings) into WidgetSpec. */
-function normalizeSpec(raw: unknown): WidgetSpec {
+/** Normalize the wire shape (checklist rows arrive as strings) into WidgetSpec.
+ *  Returns null for junk: callers filter PER WIDGET, so one bad element can
+ *  never throw away a whole good curation. */
+function normalizeSpec(raw: unknown): WidgetSpec | null {
+  if (!raw || typeof raw !== "object") return null;
   const spec = raw as WidgetSpec & { items?: unknown[] };
+  if (typeof (spec as { type?: unknown }).type !== "string") return null;
   if (spec.type === "checklist" && Array.isArray(spec.items)) {
     spec.items = spec.items.map((it) =>
       typeof it === "string"
@@ -53,26 +63,17 @@ function normalizeSpec(raw: unknown): WidgetSpec {
 // model's constrained decoding and hangs for 30s+ on the free flash-lite model
 // — observed live. Free-form JSON (responseMimeType only) generates in ~2-3s,
 // and specToWidget() still clamps every field, so nothing untrusted gets through.
-const WIDGET_SHAPES =
-  `Each widget is ONE of these JSON shapes:\n` +
-  `{"type":"metric","title":"…","value":0,"unit":"chapters","target":14}   // a number tracked toward a goal — PREFER this for anything countable\n` +
-  `{"type":"counter","title":"…","value":0,"unit":"days"}                   // a simple tally or streak\n` +
-  `{"type":"checklist","title":"…","items":["Real name 1","Real name 2"]}   // items MUST be real, specific names — never "Item 1"\n` +
-  `{"type":"timer","title":"…","durationSeconds":1500}                      // a focus / session timer\n` +
-  `{"type":"progress","title":"…","value":0}                                // 0–100 percent progress\n` +
-  `{"type":"habit","title":"…"}                                             // a daily check-in streak — use for anything done EVERY day\n` +
-  `{"type":"sticky_note","title":"…","content":"…"}                         // only if it carries real content (a quote, a tip)`;
-
+// The prompt itself lives in curationPrompt.ts, shared with the Claude path.
 const curatePrompt = (goal: string) =>
-  `You are curating the INITIAL tracking workspace for this goal:\n"${goal}"\n\n` +
-  `Return ONLY a JSON object (no markdown fences, no prose) of exactly this shape:\n` +
-  `{\n  "title": "short tab title, 24 chars max",\n  "domain": one of "fitness"|"study"|"writing"|"finance"|"work"|"habit"|"general",\n  "widgets": [ 4 to 6 widgets ]\n}\n\n` +
-  WIDGET_SHAPES +
-  `\n\nRules:\n` +
-  `- Use your REAL knowledge of the subject. Reading a specific book → its ACTUAL chapter/section names. Training → real exercise names. A course/exam → real module or topic names.\n` +
-  `- NEVER generic placeholders ("Topic 1", "First step", "Item 1", "Chapter 1"). If you don't know real names, use a metric or counter instead of a vague checklist.\n` +
-  `- Prefer metrics (with unit and target) whenever a number is tracked toward a goal.\n` +
-  `- At most one sticky_note, and only with real, specific content.`;
+  curationBody(goal) +
+  `\n\nReturn ONLY a JSON object (no markdown fences, no prose outside it), with the fields in EXACTLY this order:\n` +
+  `{\n` +
+  `  "analysis": "${ANALYSIS_DESC}",\n` +
+  `  "skipped": "${SKIPPED_DESC}",\n` +
+  `  "widgets": [ the widgets — as many as the goal contains, no more ],\n` +
+  `  "title": "short tab title, 24 chars max",\n` +
+  `  "domain": one of "fitness"|"study"|"writing"|"finance"|"work"|"habit"|"general"\n` +
+  `}`;
 
 const chatSystem = (ctx: AIContext) =>
   `You are a calm, warm companion helping curate a personal tracking workspace. ${contextLine(ctx)} ` +
@@ -96,52 +97,72 @@ export class GeminiProvider implements AIProvider {
   }
 
   /** With a personal key we call Google directly (their key, their quota). */
-  private callGoogle(body: object): Promise<Response> {
+  private callGoogle(body: object, timeoutMs: number): Promise<Response> {
     return fetch(`${ENDPOINT}/${this.model}:generateContent?key=${encodeURIComponent(this.apiKey)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
       // Never hang forever: a stuck request would otherwise hold one of the
       // browser's ~6 per-host connections and quietly jam later calls.
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   }
 
   /** No personal key: go through Grove's own /api/ai, which holds the shared
    *  key server-side. Requires a signed-in user (the proxy enforces it too). */
-  private async callProxy(body: object): Promise<Response> {
+  private async callProxy(body: object, timeoutMs: number): Promise<Response> {
     const token = (await supabase?.auth.getSession())?.data.session?.access_token;
     if (!token) throw new Error("sign in to use AI");
     return fetch("/api/ai", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ model: this.model, payload: body }),
-      signal: AbortSignal.timeout(25_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   }
 
-  private async attempt(body: object): Promise<unknown> {
-    const res = this.apiKey ? await this.callGoogle(body) : await this.callProxy(body);
+  private async attempt(body: object, timeoutMs: number): Promise<unknown> {
+    const res = this.apiKey ? await this.callGoogle(body, timeoutMs) : await this.callProxy(body, timeoutMs);
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
-      const err = new Error(`Gemini ${res.status}: ${detail.slice(0, 200)}`) as Error & { status?: number };
+      // Grove's own proxy sets a STRING `code` at the top level. Google's
+      // passthrough body has error.code as a NUMBER — accept only a string, or a
+      // Google 503 would set code = 503 and defeat the point of the check.
+      let code: string | undefined;
+      try {
+        const parsed = JSON.parse(detail) as { code?: unknown };
+        if (typeof parsed.code === "string") code = parsed.code;
+      } catch {
+        /* not JSON */
+      }
+      const err = new Error(`Gemini ${res.status}: ${detail.slice(0, 200)}`) as Error & {
+        status?: number;
+        code?: string;
+      };
       err.status = res.status;
+      err.code = code;
       throw err;
     }
     return res.json();
   }
 
-  // One retry on transient failure (timeout, network, rate-limit, 5xx). A bad
+  // One retry on TRANSIENT failure (timeout, network, rate-limit, 5xx). A bad
   // key or malformed request (400/401/403) won't improve on retry, so fail fast.
-  private async call(body: object): Promise<unknown> {
+  // Neither will a missing server key — but that returns 503, and Google ALSO
+  // returns a genuine transient 503 ("model is overloaded"), so gate on our
+  // proxy's own string code rather than on the status alone.
+  private async call(body: object, opts?: { timeoutMs?: number; retry?: boolean }): Promise<unknown> {
+    const timeoutMs = opts?.timeoutMs ?? (this.apiKey ? 20_000 : 25_000);
     try {
-      return await this.attempt(body);
+      return await this.attempt(body, timeoutMs);
     } catch (e) {
-      const status = (e as { status?: number }).status;
-      const retryable = status === undefined || status === 429 || status >= 500;
+      if (opts?.retry === false) throw e;
+      const { status, code } = e as { status?: number; code?: string };
+      const permanent = code === "ai_not_configured";
+      const retryable = !permanent && (status === undefined || status === 429 || status >= 500);
       if (!retryable) throw e;
       await new Promise((r) => setTimeout(r, 600));
-      return this.attempt(body);
+      return this.attempt(body, timeoutMs);
     }
   }
 
@@ -180,24 +201,48 @@ export class GeminiProvider implements AIProvider {
         thinkingConfig: { thinkingLevel: "LOW" },
       },
     });
-    return normalizeSpec(JSON.parse(GeminiProvider.text(data)));
+    const spec = normalizeSpec(JSON.parse(GeminiProvider.text(data)));
+    if (!spec) throw new Error("no widget returned");
+    return spec;
   }
 
   async curateWorkspace(goal: string): Promise<CurationResult> {
-    const data = await this.call({
-      contents: [{ role: "user", parts: [{ text: curatePrompt(goal) }] }],
-      generationConfig: {
-        responseMimeType: "application/json",
-        // No responseSchema on purpose — see WIDGET_SHAPES note. thinkingLevel
-        // LOW keeps a touch of reasoning (subject knowledge) at ~2-3s latency.
-        thinkingConfig: { thinkingLevel: "LOW" },
+    const data = await this.call(
+      {
+        contents: [{ role: "user", parts: [{ text: curatePrompt(goal) }] }],
+        generationConfig: {
+          responseMimeType: "application/json",
+          // No responseSchema on purpose — see WIDGET_SHAPES note. thinkingLevel
+          // LOW keeps a touch of reasoning (subject knowledge) at ~2-3s latency.
+          thinkingConfig: { thinkingLevel: "LOW" },
+          // Pinned, not incidental: at temperature 0 this returns byte-identical
+          // widget sets across goals — the exact sameness this prompt exists to
+          // fix — and high values degenerate to metric+metric+metric.
+          temperature: 1.0,
+        },
       },
-    });
-    const out = GeminiProvider.json<{ title: string; domain: Domain; widgets: unknown[] }>(data);
+      // This call blocks the Begin button, so budget it hard and don't retry:
+      // a retry can't finish inside the budget, and the old 25s + 600ms + 25s
+      // path could block Begin for ~50s before silently revealing a template.
+      { timeoutMs: 9_000, retry: false },
+    );
+    // "analysis" and "skipped" are the model's scratchpad — read and discarded.
+    // They're separate JSON keys, so they can never reach specToWidget.
+    const out = GeminiProvider.json<{
+      analysis?: string;
+      skipped?: string;
+      title: string;
+      domain: Domain;
+      widgets: unknown[];
+    }>(data);
+    if (import.meta.env.DEV) console.debug("[curate]", { analysis: out.analysis, skipped: out.skipped });
     return {
       title: out.title,
       domain: out.domain,
-      widgets: (out.widgets ?? []).map(normalizeSpec),
+      widgets: (Array.isArray(out.widgets) ? out.widgets : []).flatMap((w) => {
+        const spec = normalizeSpec(w);
+        return spec ? [spec] : [];
+      }),
     };
   }
 
@@ -222,12 +267,10 @@ export class GeminiProvider implements AIProvider {
     }>(data);
     return {
       text: out.message,
-      proposals: (out.proposals ?? []).map((p) => ({
-        id: rid(),
-        spec: normalizeSpec(p.widget),
-        rationale: p.rationale,
-        status: "pending" as const,
-      })),
+      proposals: (out.proposals ?? []).flatMap((p) => {
+        const spec = normalizeSpec(p.widget);
+        return spec ? [{ id: rid(), spec, rationale: p.rationale, status: "pending" as const }] : [];
+      }),
     };
   }
 }

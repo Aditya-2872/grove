@@ -16,6 +16,7 @@
 
 import type { WidgetSpec, ChatMessage, Domain } from "./types";
 import type { AIProvider, AIContext, CurationTurn, CurationResult } from "./ai";
+import { curationBody, ANALYSIS_DESC, SKIPPED_DESC } from "./curationPrompt";
 
 const rid = () => crypto.randomUUID();
 
@@ -24,13 +25,20 @@ const WIDGET_SCHEMA = {
   type: "object",
   additionalProperties: false,
   properties: {
-    type: { type: "string", enum: ["metric", "checklist", "counter", "timer", "progress", "sticky_note"] },
+    // habit and bmi were missing here, so this path could not emit two widget
+    // types that already render — a streak had nowhere to go but a counter.
+    type: {
+      type: "string",
+      enum: ["metric", "checklist", "counter", "timer", "progress", "sticky_note", "habit", "bmi"],
+    },
     title: { type: "string", description: "Short title, ≤40 chars" },
     value: { type: "number", description: "starting value (metric/counter/progress)" },
-    unit: { type: "string", description: "e.g. hrs, glasses, km, $ (metric/counter)" },
-    target: { type: "number", description: "goal (metric/counter)" },
+    unit: { type: "string", description: "e.g. hrs, glasses, km, $ (metric only — a counter renders no unit)" },
+    target: { type: "number", description: "the real finish line (metric only; omit for a level with no finish line)" },
     durationSeconds: { type: "number", description: "length in seconds (timer)" },
     content: { type: "string", description: "note body (sticky_note)" },
+    heightCm: { type: "number", description: "height in cm (bmi)" },
+    weightKg: { type: "number", description: "weight in kg (bmi)" },
     items: {
       type: "array",
       description: "rows (checklist)",
@@ -113,30 +121,34 @@ export class ClaudeProvider implements AIProvider {
         {
           name: "create_workspace",
           description: "Create the initial tracking workspace for the user's goal.",
+          // Field order matches the Gemini path and is deliberate: the
+          // scratchpad fields come first so they constrain the widgets, and
+          // `domain` comes LAST so the model isn't picking a stereotype before
+          // it has chosen anything. (Property order is only a hint to a tool-use
+          // model — weaker than Gemini's free-form ordering, but free.)
           input_schema: {
             type: "object",
             additionalProperties: false,
             properties: {
+              analysis: { type: "string", description: ANALYSIS_DESC },
+              skipped: { type: "string", description: SKIPPED_DESC },
+              widgets: { type: "array", items: WIDGET_SCHEMA },
               title: { type: "string", description: "Short tab title, ≤24 chars" },
               domain: { type: "string", enum: ["fitness", "study", "writing", "finance", "work", "habit", "general"] },
-              widgets: { type: "array", items: WIDGET_SCHEMA },
             },
-            required: ["title", "domain", "widgets"],
+            required: ["analysis", "skipped", "widgets", "title", "domain"],
           },
           strict: true,
         } as never,
       ],
       tool_choice: { type: "tool", name: "create_workspace" },
-      messages: [
-        {
-          role: "user",
-          content: `Build the INITIAL tracking workspace for this goal: "${goal}". 4-6 widgets, each genuinely tailored to THIS goal — never generic placeholders like "Topic 1" or "First step"; checklist rows must be real, specific names (actual chapters, exercises, tasks). Prefer metrics with unit and target for numeric goals.`,
-        },
-      ],
+      messages: [{ role: "user", content: curationBody(goal) }],
     });
     if ((msg.stop_reason as string) === "refusal") throw new Error("request refused");
     const tool = msg.content.find((b) => b.type === "tool_use");
     if (!tool || tool.type !== "tool_use") throw new Error("no workspace returned");
+    // analysis/skipped are the model's scratchpad — they're separate keys, so
+    // they can never reach specToWidget.
     return tool.input as { title: string; domain: Domain; widgets: WidgetSpec[] };
   }
 

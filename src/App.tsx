@@ -498,6 +498,10 @@ export default function App({
     // only the keyless/error fallback.
     const ai = getAI();
     if (!ai.curateWorkspace) {
+      // MockProvider has no curateWorkspace, so this returns BEFORE the
+      // try/catch below — it was the one fallback path in the app that logged
+      // nothing at all. Fires whenever there's no key and no account.
+      console.warn("AI curation unavailable (offline provider); using template fallback.");
       reveal(template());
       return;
     }

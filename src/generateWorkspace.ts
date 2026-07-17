@@ -19,7 +19,14 @@ import type {
 import { uid } from "./types";
 
 const check = (text: string): ChecklistItem => ({ id: uid(), text, done: false });
-const note = (title: string): WidgetSpec => ({ type: "sticky_note", title, content: "", color: "#242c22" });
+/** A note must CARRY something. An empty one is padding — the thing that made
+ *  every tab look identical. Same rule the AI curation prompt enforces. */
+const note = (title: string, content: string): WidgetSpec => ({
+  type: "sticky_note",
+  title,
+  content,
+  color: "#242c22",
+});
 
 // --- widget sizes: deliberately varied so the canvas isn't a uniform grid ----
 export const DEFAULT_SIZE: Record<WidgetType, { w: number; h: number }> = {
@@ -76,13 +83,14 @@ const DOMAINS: DomainDef[] = [
     name: "fitness",
     test: /(shape|fit|fitness|gym|workout|exercise|weight|muscle|run|running|marathon|health|diet|nutrition|abs|strength|yoga|lose)/,
     suggests: ["habit", "bmi", "metric", "checklist", "counter", "timer", "progress", "sticky_note"],
+    // A template can't know YOUR numbers, so it never invents one: where there's
+    // no honest finish line, the metric ships without a target rather than
+    // guessing. Counts differ per domain because the domains differ.
     widgets: () => [
-      { type: "bmi", title: "BMI", heightCm: 170, weightKg: 70 },
-      { type: "checklist", title: "Workouts this week", items: [check("Upper body"), check("Lower body"), check("Cardio / run"), check("Mobility & stretch")] },
-      { type: "checklist", title: "Nutrition habits", items: [check("Protein with every meal"), check("5 servings veg & fruit"), check("No sugary drinks")] },
-      { type: "counter", title: "Water (glasses)", value: 0 },
-      { type: "progress", title: "Weight goal", value: 0 },
-      { type: "counter", title: "Workout streak", value: 0 },
+      { type: "metric", title: "Workouts this week", value: 0, unit: "sessions", target: 4 },
+      { type: "metric", title: "Body weight", value: 0, unit: "kg" },
+      { type: "metric", title: "Steps", value: 0, unit: "steps", target: 8000 },
+      { type: "checklist", title: "Getting set up", items: [check("Book a gym induction"), check("Buy shoes that fit"), check("Pick 3 days that are yours"), check("Take a starting photo")] },
     ],
   },
   {
@@ -90,11 +98,10 @@ const DOMAINS: DomainDef[] = [
     test: /(study|exam|course|class|revision|learn|assignment|homework|quiz|semester|degree|certification|cfa|gre|sat|test)/,
     suggests: ["habit", "checklist", "timer", "progress", "counter", "sticky_note"],
     widgets: () => [
-      { type: "checklist", title: "Study plan", items: [check("Review notes"), check("Practice problems"), check("Test yourself"), check("Final review")] },
+      { type: "habit", title: "Study something today" },
       { type: "timer", title: "Focus session", durationSeconds: 25 * 60 },
-      { type: "progress", title: "Overall progress", value: 0 },
-      { type: "counter", title: "Study streak (days)", value: 0 },
-      note("Key concepts"),
+      { type: "metric", title: "Study hours", value: 0, unit: "hrs" },
+      { type: "checklist", title: "Getting set up", items: [check("List every topic"), check("Find past papers"), check("Book the exam date"), check("Pick a fixed study slot")] },
     ],
   },
   {
@@ -102,11 +109,10 @@ const DOMAINS: DomainDef[] = [
     test: /(write|writing|novel|book|blog|essay|thesis|article|screenplay|story|content|journal)/,
     suggests: ["counter", "checklist", "progress", "timer", "sticky_note"],
     widgets: () => [
-      { type: "checklist", title: "Outline", items: [check("Beginning"), check("Middle"), check("End")] },
-      { type: "counter", title: "Words today", value: 0 },
-      { type: "progress", title: "Draft progress", value: 0 },
-      { type: "counter", title: "Writing streak", value: 0 },
-      note("Ideas"),
+      { type: "metric", title: "Words today", value: 0, unit: "words", target: 500 },
+      { type: "metric", title: "Total words", value: 0, unit: "words" },
+      { type: "habit", title: "Write every day" },
+      note("Logline", "One sentence: who wants what, and what stands in the way?"),
     ],
   },
   {
@@ -114,11 +120,9 @@ const DOMAINS: DomainDef[] = [
     test: /(budget|save|saving|money|finance|financial|debt|invest|expense|spend)/,
     suggests: ["progress", "metric", "counter", "checklist", "sticky_note"],
     widgets: () => [
-      { type: "progress", title: "Savings goal", value: 0 },
-      { type: "counter", title: "No-spend days", value: 0 },
-      { type: "checklist", title: "This month", items: [check("Track expenses"), check("Cancel unused subscriptions"), check("Move money to savings")] },
-      { type: "counter", title: "Expenses logged", value: 0 },
-      note("Money notes"),
+      { type: "metric", title: "Saved", value: 0, unit: "$" },
+      { type: "metric", title: "Spent this month", value: 0, unit: "$" },
+      { type: "checklist", title: "Cut these costs", items: [check("Cancel unused subscriptions"), check("Switch to a cheaper phone plan"), check("Set up a payday transfer"), check("Sell what you don't use")] },
     ],
   },
   {
@@ -126,11 +130,10 @@ const DOMAINS: DomainDef[] = [
     test: /(client|freelanc|project|consult|engagement|deliver|contract|invoice|launch|startup|business|work|ship)/,
     suggests: ["checklist", "counter", "progress", "timer", "sticky_note"],
     widgets: () => [
-      { type: "checklist", title: "Deliverables", items: [check("Kickoff"), check("First draft"), check("Review"), check("Handoff")] },
-      { type: "counter", title: "Hours logged", value: 0 },
-      { type: "progress", title: "Project progress", value: 0 },
+      { type: "checklist", title: "Deliverables", items: [check("Kickoff & brief agreed"), check("First draft"), check("Client review"), check("Revisions"), check("Handoff & invoice")] },
+      { type: "metric", title: "Hours logged", value: 0, unit: "hrs" },
       { type: "timer", title: "Deep work", durationSeconds: 50 * 60 },
-      note("Notes"),
+      note("Scope: what's not included", "Write it down now. Everything not on this list is a new quote."),
     ],
   },
   {
@@ -138,11 +141,9 @@ const DOMAINS: DomainDef[] = [
     test: /(habit|routine|meditat|mindful|read more|reading|sleep|wake|discipline|consistency|calm|stress)/,
     suggests: ["habit", "counter", "metric", "checklist", "timer", "progress", "sticky_note"],
     widgets: () => [
-      { type: "counter", title: "Current streak", value: 0 },
-      { type: "checklist", title: "Daily routine", items: [check("Morning"), check("Afternoon"), check("Evening")] },
-      { type: "progress", title: "Monthly goal", value: 0 },
+      { type: "habit", title: "Daily check-in" },
       { type: "timer", title: "Session", durationSeconds: 10 * 60 },
-      note("Reflections"),
+      { type: "checklist", title: "Make it easy", items: [check("Put it where you'll see it"), check("Pick the same time each day"), check("Decide the smallest version"), check("Tell someone")] },
     ],
   },
 ];
@@ -165,10 +166,13 @@ function curate(goal: string): Widget[] {
     domain
       ? domain.widgets()
       : [
-          { type: "checklist", title: "Plan", items: [check("Get started"), check("Build momentum"), check("Review & adjust")] },
+          // The honest "we know nothing about this goal" case, and the one real
+          // niche for progress: no unit to measure and no steps we can name.
+          // A vague checklist ("Get started", "Build momentum") is worse than
+          // no checklist — it's the padding that made every tab look the same.
           { type: "progress", title: "Progress", value: 0 },
-          { type: "counter", title: "Streak", value: 0 },
-          note("Notes"),
+          { type: "habit", title: "Work on it today" },
+          note("What does done look like?", "Describe the finish line in one line. Then the trackers pick themselves."),
         ],
   );
 }
