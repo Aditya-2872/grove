@@ -4,7 +4,7 @@
 // (Canva-style) are drawn at the matching coordinates.
 // ---------------------------------------------------------------------------
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Widget, Scenery } from "../types";
 import { sizeOf } from "../generateWorkspace";
 import WidgetCard from "./WidgetCard";
@@ -87,6 +87,17 @@ export default function Canvas({
   onDelete: (id: string) => void;
 }) {
   const [guides, setGuides] = useState<{ v: number[]; h: number[] }>({ v: [], h: [] });
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  /** Keep a widget wholly inside the canvas — the space is a page, not an
+   *  endless plane, so a widget can never be pushed out of reach. */
+  function clampToCanvas(x: number, y: number, w: number, h: number) {
+    const el = wrapRef.current;
+    if (!el) return { x: Math.max(0, x), y: Math.max(0, y) };
+    const maxX = Math.max(0, el.clientWidth - w);
+    const maxY = Math.max(0, el.clientHeight - h);
+    return { x: Math.min(Math.max(0, x), maxX), y: Math.min(Math.max(0, y), maxY) };
+  }
 
   function handleMove(id: string, rawX: number, rawY: number) {
     const self = widgets.find((w) => w.id === id);
@@ -100,13 +111,29 @@ export default function Canvas({
       });
     const snapped = computeSnap({ x: rawX, y: rawY, w: s.w, h: s.h }, others);
     setGuides(snapped.guides);
-    onMove(id, snapped.x, snapped.y);
+    const { x, y } = clampToCanvas(snapped.x, snapped.y, s.w, s.h);
+    onMove(id, x, y);
+  }
+
+  /** Resizing stops at the canvas edge too, for the same reason. */
+  function handleResize(id: string, width: number, height: number) {
+    const self = widgets.find((w) => w.id === id);
+    const el = wrapRef.current;
+    if (!self || !el) return onResize(id, width, height);
+    onResize(
+      id,
+      Math.min(width, Math.max(1, el.clientWidth - self.x)),
+      Math.min(height, Math.max(1, el.clientHeight - self.y)),
+    );
   }
 
   const clearGuides = () => setGuides({ v: [], h: [] });
 
   return (
-    <div className="relative h-full w-full overflow-auto" style={{ background: "var(--bg)" }}>
+    // overflow-auto, not hidden: dragging is clamped so nothing can be pushed
+    // out, but if the WINDOW shrinks below existing widgets they must stay
+    // reachable rather than being sealed off.
+    <div ref={wrapRef} className="relative h-full w-full overflow-auto" style={{ background: "var(--bg)" }}>
       {/* scene at the back, hidden by the reveal-trail until the cursor unveils it */}
       <SceneryLayer scenery={scenery} />
       <RevealTrail />
@@ -127,7 +154,7 @@ export default function Canvas({
             onChange={onChange}
             onMove={handleMove}
             onMoveEnd={clearGuides}
-            onResize={onResize}
+            onResize={handleResize}
             onDelete={onDelete}
           />
         ))
