@@ -20,6 +20,11 @@ interface AuthValue {
   guest: boolean;
   enterGuest: () => void;
   exitGuest: () => void;
+  /** Logged-out visitors see the landing screen first; this is whether they've
+   *  asked for the sign-in form instead. Lives here (not in AuthGate) so the
+   *  guest's "create a free account" nudge can send them straight to it. */
+  authOpen: boolean;
+  setAuthOpen: (v: boolean) => void;
   signOut: () => Promise<void>;
 }
 
@@ -40,6 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(cloudEnabled);
   const [guestFlag, setGuestFlag] = useState(readGuest);
+  const [authOpen, setAuthOpen] = useState(false);
 
   const setGuest = (v: boolean) => {
     setGuestFlag(v);
@@ -64,7 +70,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s);
       setHasSession(!!s);
-      if (s) setGuest(false); // signing in supersedes and ends guest browsing
+      if (s) {
+        setGuest(false); // signing in supersedes and ends guest browsing
+        setAuthOpen(false); // so a later sign-out lands on the front door, not the form
+      }
     });
     return () => sub.subscription.unsubscribe();
   }, []);
@@ -82,8 +91,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // A live session always wins, so a stale guest flag can never route a
         // signed-in user into the local app.
         guest: guestFlag && !session,
-        enterGuest: () => setGuest(true),
-        exitGuest: () => setGuest(false),
+        enterGuest: () => {
+          setGuest(true);
+          setAuthOpen(false);
+        },
+        // The only reason to leave guest mode is to make an account, so take
+        // them straight to the form rather than back to the pitch.
+        exitGuest: () => {
+          setGuest(false);
+          setAuthOpen(true);
+        },
+        authOpen,
+        setAuthOpen,
         signOut,
       }}
     >

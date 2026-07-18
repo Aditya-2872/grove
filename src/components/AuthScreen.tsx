@@ -23,7 +23,7 @@ function friendly(message: string): string {
   return message;
 }
 
-export default function AuthScreen() {
+export default function AuthScreen({ onBack }: { onBack?: () => void }) {
   const { enterGuest } = useAuth();
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
@@ -138,6 +138,12 @@ export default function AuthScreen() {
         >
           Just try it — no account needed →
         </button>
+
+        {onBack && (
+          <button onClick={onBack} className="mt-7 block w-full text-[11px] text-muted-c/70 transition hover:text-c">
+            ← what is Grove?
+          </button>
+        )}
       </div>
     </div>
   );

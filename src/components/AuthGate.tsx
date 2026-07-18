@@ -7,9 +7,10 @@ import type { ReactNode } from "react";
 import { cloudEnabled } from "../supabase";
 import { useAuth } from "../auth";
 import AuthScreen from "./AuthScreen";
+import LandingScreen from "./LandingScreen";
 
 export default function AuthGate({ children }: { children: ReactNode }) {
-  const { session, loading, guest } = useAuth();
+  const { session, loading, guest, authOpen, setAuthOpen } = useAuth();
 
   if (!cloudEnabled) return <>{children}</>;
 
@@ -24,7 +25,13 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     );
   }
 
-  // A signed-in user OR a guest who chose to try it first both see the app;
-  // everyone else meets the sign-in screen.
-  return session || guest ? <>{children}</> : <AuthScreen />;
+  // A signed-in user OR a guest who chose to try it first both see the app.
+  // Everyone else meets the LANDING screen — which says what Grove is — and
+  // only reaches the sign-in form if they ask for it.
+  if (session || guest) return <>{children}</>;
+  return authOpen ? (
+    <AuthScreen onBack={() => setAuthOpen(false)} />
+  ) : (
+    <LandingScreen onSignIn={() => setAuthOpen(true)} />
+  );
 }
