@@ -1,0 +1,60 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
+  <!-- Source for the link-preview card (public/og.png). Rasterize with
+       `npm i -D sharp && node scripts/build-icons.mjs`. Grove's own palette:
+       bg #0a0d0b, accent #9db38c, text #dbe4db, muted #8b988c. -->
+  <defs>
+    <radialGradient id="glow" cx="42%" cy="8%" r="85%">
+      <stop offset="0%" stop-color="#9db38c" stop-opacity="0.20" />
+      <stop offset="55%" stop-color="#9db38c" stop-opacity="0.045" />
+      <stop offset="100%" stop-color="#9db38c" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="hill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#151d15" />
+      <stop offset="100%" stop-color="#0d130d" />
+    </linearGradient>
+    <!-- No glow filter on the mark: librsvg renders the filter region as a
+         faintly lighter box behind it, which shows on the flat dark card. -->
+  </defs>
+
+  <rect width="1200" height="630" fill="#0a0d0b" />
+  <rect width="1200" height="630" fill="url(#glow)" />
+
+  <!-- a hint of the canvas: glass widget cards, deliberately quiet -->
+  <g opacity="0.85">
+    <rect x="762" y="132" width="234" height="150" rx="26" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.10" />
+    <circle cx="796" cy="166" r="6" fill="#9db38c" fill-opacity="0.85" />
+    <rect x="814" y="161" width="92" height="10" rx="5" fill="#dbe4db" fill-opacity="0.28" />
+    <rect x="790" y="200" width="150" height="12" rx="6" fill="#dbe4db" fill-opacity="0.16" />
+    <rect x="790" y="226" width="110" height="12" rx="6" fill="#dbe4db" fill-opacity="0.12" />
+
+    <rect x="1018" y="132" width="150" height="234" rx="26" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.10" />
+    <circle cx="1093" cy="228" r="46" fill="none" stroke="#ffffff" stroke-opacity="0.10" stroke-width="10" />
+    <path d="M1093 182a46 46 0 0 1 34 77" fill="none" stroke="#9db38c" stroke-opacity="0.9" stroke-width="10" stroke-linecap="round" />
+
+    <rect x="762" y="304" width="234" height="118" rx="26" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.10" />
+    <rect x="790" y="334" width="126" height="12" rx="6" fill="#dbe4db" fill-opacity="0.18" />
+    <rect x="790" y="362" width="178" height="12" rx="6" fill="#dbe4db" fill-opacity="0.12" />
+    <rect x="790" y="390" width="96" height="12" rx="6" fill="#dbe4db" fill-opacity="0.10" />
+  </g>
+
+  <!-- the sprout (the app mark) -->
+  <g transform="translate(23.4 62) scale(9)" fill="none" stroke="#aecb9f" stroke-width="1.35"
+     stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 20v-7" />
+    <path d="M12 13c0-3 2.4-5 5.2-5-.2 3-2.4 5-5.2 5Z" />
+    <path d="M12 14c0-2.6-2-4.4-4.6-4.4C7.6 12 9.6 14 12 14Z" />
+  </g>
+
+  <text x="206" y="228" font-family="Segoe UI, Candara, Optima, system-ui, sans-serif"
+        font-size="104" font-weight="300" fill="#dbe4db" letter-spacing="1">Grove</text>
+
+  <text x="92" y="322" font-family="Segoe UI, Candara, Optima, system-ui, sans-serif"
+        font-size="35" font-weight="300" fill="#9db38c">Grow your goals in a calm, personal space.</text>
+
+  <text x="92" y="380" font-family="Segoe UI, Candara, Optima, system-ui, sans-serif"
+        font-size="25" font-weight="300" fill="#8b988c">A widget canvas for the things you're tending — no signup to try.</text>
+
+  <!-- soft hills, the Ghibli note -->
+  <path d="M0 560 C 150 500, 330 512, 470 552 C 610 592, 760 528, 900 542 C 1020 554, 1120 588, 1200 566 L1200 630 L0 630 Z" fill="url(#hill)" />
+  <path d="M0 596 C 200 560, 420 596, 640 590 C 860 584, 1040 612, 1200 600 L1200 630 L0 630 Z" fill="#080b08" />
+</svg>
