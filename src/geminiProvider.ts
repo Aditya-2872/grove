@@ -116,7 +116,10 @@ export class GeminiProvider implements AIProvider {
     } catch (e) {
       if (opts?.retry === false) throw e;
       const { status, code } = e as { status?: number; code?: string };
-      const permanent = code === "ai_not_configured";
+      // Our own 429 (daily cap) is permanent for today — retrying would just
+      // spend another call and fail again. Google's 429 (rate/quota) is worth
+      // one retry, which is why this gates on the code, not the status.
+      const permanent = code === "ai_not_configured" || code === "rate_limited";
       const retryable = !permanent && (status === undefined || status === 429 || status >= 500);
       if (!retryable) throw e;
       await new Promise((r) => setTimeout(r, 600));

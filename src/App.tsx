@@ -414,19 +414,22 @@ export default function App({
 
   const openChat = (wsId: string) => updateChat(wsId, (c) => ({ ...c, open: true }));
   const closeChat = (wsId: string) => updateChat(wsId, (c) => ({ ...c, open: false }));
-  const chatError = (wsId: string) =>
+  /** Say what actually went wrong. (The old copy always blamed the user's key —
+   *  wrong for someone on Grove's shared AI, who has no key to check.) */
+  const chatError = (wsId: string, err?: unknown) => {
+    const code = (err as { code?: string } | undefined)?.code;
+    const text =
+      code === "rate_limited"
+        ? "That's all the AI for today — it resets tomorrow. Everything else still works, and you can always add widgets yourself."
+        : code === "ai_not_configured"
+          ? "Grove's AI isn't set up on the server yet. Everything else still works."
+          : "I couldn't reach the AI just now. Everything else still works — try again in a moment.";
     updateChat(wsId, (c) => ({
       ...c,
       status: "idle",
-      messages: [
-        ...c.messages,
-        {
-          id: crypto.randomUUID(),
-          role: "ai",
-          text: "I couldn't reach the AI just now — check your key and model in settings (the gear, top-right). If it keeps happening, tell me the error and I'll fix it.",
-        },
-      ],
+      messages: [...c.messages, { id: crypto.randomUUID(), role: "ai", text }],
     }));
+  };
 
   function sendUserReply(wsId: string, text: string) {
     const ws = state.workspaces.find((w) => w.id === wsId);
@@ -448,7 +451,7 @@ export default function App({
           ],
         })),
       )
-      .catch(() => chatError(wsId));
+      .catch((e) => chatError(wsId, e));
   }
 
   function acceptProposal(wsId: string, messageId: string, proposalId: string) {
@@ -513,7 +516,7 @@ export default function App({
             ],
           })),
         )
-        .catch(() => chatError(a.id));
+        .catch((e) => chatError(a.id, e));
     }
   }, [state.activeId, state.workspaces, composing]);
 
